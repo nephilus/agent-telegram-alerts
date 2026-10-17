@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.2.0...v0.2.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* clarify alert duration and working-folder context ([#6](https://github.com/nephilus/jcode-telegram-alerts/issues/6)) ([39d51ac](https://github.com/nephilus/jcode-telegram-alerts/commit/39d51acc27febc8fb925b3ebf3bcf3fcd5de6ce0))
+
 ## [0.2.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.1.0...v0.2.0) (2026-10-17)
 
 
