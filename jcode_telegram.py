@@ -41,7 +41,10 @@ def config_path():
 
 def load_config():
     path = config_path()
-    return tomllib.loads(path.read_text()) if path.exists() else {}
+    document = tomllib.loads(path.read_text()) if path.exists() else {}
+    if any(not isinstance(document.get(key, {}), dict) for key in ("safety", "hooks")):
+        raise ValueError("Invalid local configuration table.")
+    return document
 
 
 def api(token, method, values=None, timeout=15):
@@ -67,6 +70,8 @@ def api(token, method, values=None, timeout=15):
 def update_safety(text, changes):
     """Change only single-line native safety keys, preserving unrelated config."""
     original = tomllib.loads(text)
+    if not isinstance(original.get("safety", {}), dict):
+        raise ValueError("Invalid local safety table.")
     match = re.search(r"(?ms)^\[safety\][ \t]*\n(.*?)(?=^\[|\Z)", text)
     if match:
         body = match.group(1)
@@ -336,6 +341,8 @@ def main():
         print("Completion hook: " + ("installed" if "jcode-telegram" in str(load_config().get("hooks", {}).get("turn_end", "")) else "not installed"))
         try:
             receipt = json.loads(receipt_path().read_text())
+            if not isinstance(receipt, dict):
+                raise ValueError("Invalid local diagnostic receipt.")
             print("Last hook observation: " + str(receipt.get("state")) + " at " + str(receipt.get("at")))
         except (OSError, ValueError):
             print("Last hook observation: none recorded yet")
@@ -353,7 +360,7 @@ def cli():
     try:
         main()
         return 0
-    except (SetupError, OSError, ValueError) as error:
+    except (SetupError, OSError, ValueError, TypeError, RecursionError) as error:
         # File/parser exceptions could contain config values, so only show our controlled messages.
         print(str(error) if isinstance(error, SetupError) else "Local config could not be read or updated safely.", file=sys.stderr)
         return 1
