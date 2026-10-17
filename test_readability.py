@@ -35,7 +35,7 @@ def bold_fragments(message):
 class ReadabilityTests(unittest.TestCase):
     def test_expanded_has_spaced_emoji_sections_and_bold_owned_labels(self):
         message = fmt.render_message(event(), prompt="Improve notification readability.")
-        self.assertTrue(message["text"].startswith("✅ Jcode turn finished\nlab🚀 · 95s"))
+        self.assertTrue(message["text"].startswith("✅ Jcode turn finished\n📁 /project/lab🚀 · 1m 35s"))
         self.assertIn("\n\n💬 Asked:\n", message["text"])
         self.assertIn("\n\n📝 Result:\n", message["text"])
         self.assertIn("\n\n🔎 Checked:\n", message["text"])
@@ -120,7 +120,7 @@ class ReadabilityTests(unittest.TestCase):
             self.assertEqual(method, "sendMessage")
             self.assertNotIn("parse_mode", values)
             self.assertNotIn("prompt_available", values)
-            self.assertEqual(bold_fragments(values), ["Jcode turn failed", "Asked:", "Result:"])
+            self.assertEqual(bold_fragments(values), ["Jcode turn failed", "Result:"])
             return {"message_id": 123, "text": values["text"], "entities": values["entities"]}
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "JCODE_HOME": directory}), patch.object(app.sys, "argv", ["jcode-telegram", "alert"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge) as send:
@@ -131,7 +131,7 @@ class ReadabilityTests(unittest.TestCase):
             self.assertTrue(receipt["response_confirmed"])
             self.assertTrue(receipt["formatting_confirmed"])
             self.assertFalse(receipt["prompt_available"])
-            self.assertEqual(receipt["bold_entities"], 3)
+            self.assertEqual(receipt["bold_entities"], 2)
             self.assertNotIn("Current error", app.receipt_path().read_text())
             self.assertNotIn("SYNTHETIC_TOKEN", app.receipt_path().read_text())
 

@@ -86,6 +86,21 @@ class VerbosityTests(unittest.TestCase):
             send.assert_not_called()
             self.assertFalse(app.receipt_path().exists())
 
+    def test_saved_session_without_working_directory_does_not_invent_a_folder(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}):
+            sessions = Path(directory) / "sessions"
+            sessions.mkdir()
+            session_id = "session_missing_folder"
+            (sessions / (session_id + ".json")).write_text(json.dumps({
+                "id": session_id, "messages": [
+                    {"role": "assistant", "content": [{"type": "text", "text": "Result: Saved response"}]},
+                ],
+            }))
+            result = app.preview_text("expanded", session_id)
+            self.assertIn("📁 Folder unavailable", result)
+            self.assertNotIn("📁 Jcode", result)
+            self.assertNotIn("Asked:", result)
+
     def test_actual_cli_can_choose_each_level_and_query_it(self):
         with tempfile.TemporaryDirectory() as directory:
             environment = {**os.environ, "JCODE_HOME": directory}
