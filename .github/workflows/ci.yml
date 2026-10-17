@@ -1,0 +1,88 @@
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Scan git history with verified Gitleaks
+        env:
+          GITLEAKS_VERSION: '8.30.1'
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          scan_dir=$(mktemp -d)
+          trap 'rm -rf "$scan_dir"' EXIT
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" \
+            --output "$scan_dir/$archive"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$scan_dir/$archive" | sha256sum --check --strict
+          tar -xzf "$scan_dir/$archive" -C "$scan_dir" gitleaks
+          "$scan_dir/gitleaks" git --redact --no-banner .
+  conventional:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Validate PR title
+        if: github.event_name == 'pull_request'
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python scripts/check_conventional.py
+      - name: Validate pushed subject
+        if: github.event_name == 'push'
+        run: git log -1 --format=%s | python -c 'import sys; from scripts.check_conventional import is_conventional; sys.exit(not is_conventional(sys.stdin.read().rstrip("\n")))'
+      - name: Manual dispatch policy
+        if: github.event_name == 'workflow_dispatch'
+        run: echo 'Dispatch validates the exact branch head. Release workflow separately validates the generated PR title before dispatch.'
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ['3.11', '3.12', '3.13', '3.14']
+        include:
+          - os: macos-latest
+            python: '3.14'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: ./.github/actions/validate
+  gate:
+    name: CI
+    if: always()
+    needs: [conventional, test, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all jobs to succeed
+        env:
+          CONVENTIONAL: ${{ needs.conventional.result }}
+          TEST: ${{ needs.test.result }}
+          SECRETS: ${{ needs.secrets.result }}
+        run: test "$CONVENTIONAL" = success && test "$TEST" = success && test "$SECRETS" = success

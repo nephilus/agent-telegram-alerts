@@ -1,0 +1,128 @@
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - uses: ./.github/actions/validate
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
+      - name: Dispatch CI on created or updated release PR heads
+        if: steps.release.outputs.prs != '' && steps.release.outputs.prs != '[]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess
+          from scripts.check_conventional import is_conventional
+          for pr in json.loads(os.environ['RELEASE_PRS']):
+              number = str(int(pr['number']))
+              live = json.loads(subprocess.check_output(
+                  ['gh', 'api', f'repos/{os.environ["GH_REPO"]}/pulls/{number}'], text=True))
+              if live['state'] != 'open' or live['base']['ref'] != 'main':
+                  raise SystemExit('Unexpected release PR state or base')
+              if live['head']['repo']['full_name'] != os.environ['GH_REPO']:
+                  raise SystemExit('Release PR must be in this repository')
+              if not is_conventional(live['title']):
+                  raise SystemExit('Release PR title is not conventional')
+              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--ref', live['head']['ref']], check=True)
+          PY
+  artifacts:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Verify exact released commit and version
+        env:
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(cat version.txt)" = "$RELEASE_VERSION"
+          test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+          tag_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq .object.sha)
+          test "$tag_sha" = "$RELEASE_SHA"
+      - uses: ./.github/actions/validate
+      - name: Check distribution versions and create checksums
+        env:
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          python - <<'PY'
+          import email, hashlib, os, pathlib, tarfile, zipfile
+          files = sorted(pathlib.Path('dist').iterdir())
+          assert len(files) == 2, files
+          assert sum(p.suffix == '.whl' for p in files) == 1
+          assert sum(p.name.endswith('.tar.gz') for p in files) == 1
+          for path in files:
+              if path.suffix == '.whl':
+                  with zipfile.ZipFile(path) as archive:
+                      names = [n for n in archive.namelist() if n.endswith('.dist-info/METADATA')]
+                      assert len(names) == 1
+                      metadata = archive.read(names[0])
+              else:
+                  with tarfile.open(path) as archive:
+                      names = [n for n in archive.getnames() if n.count('/') == 1 and n.endswith('/PKG-INFO')]
+                      assert len(names) == 1
+                      metadata = archive.extractfile(names[0]).read()
+              assert email.message_from_bytes(metadata)['Version'] == os.environ['RELEASE_VERSION']
+          pathlib.Path('dist/SHA256SUMS').write_text(''.join(
+              f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in files), encoding='utf-8')
+          PY
+      - name: Attach release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/*.whl dist/*.tar.gz dist/SHA256SUMS --clobber
