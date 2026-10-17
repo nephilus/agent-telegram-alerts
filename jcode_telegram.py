@@ -237,7 +237,15 @@ def alert_text(environment, min_seconds=30, verbosity=None):
     return message["text"] if message else None
 
 
-def preview_message(verbosity, session_id=None):
+def preview_message(verbosity, session_id=None, event=None):
+    if event in ("session_start", "turn_start", "session_end"):
+        return formatting.render_lifecycle_message({"JCODE_HOOK_EVENT": event,
+                                                    "JCODE_HOOK_CWD": "sample-project"},
+                                                   verbosity, alert_secrets())
+    if event == "error":
+        return formatting.render_message({"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error",
+                                          "JCODE_HOOK_ERROR": "Illustrative turn error, not a real task failure.",
+                                          "JCODE_HOOK_CWD": "sample-project"}, verbosity, "", alert_secrets())
     if session_id:
         session = formatting.read_session(config_path().parent, session_id)
         messages = session.get("messages", [])
@@ -257,8 +265,8 @@ def preview_message(verbosity, session_id=None):
     return formatting.render_message(event, verbosity, prompt, alert_secrets())
 
 
-def preview_text(verbosity, session_id=None):
-    return preview_message(verbosity, session_id)["text"]
+def preview_text(verbosity, session_id=None, event=None):
+    return preview_message(verbosity, session_id, event)["text"]
 
 
 def receipt_path():
@@ -287,11 +295,17 @@ def main():
     parser.add_argument("--min-seconds", type=int, default=30)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
     parser.add_argument("--session", help="use one saved session for a no-send preview")
+    parser.add_argument("--event", choices=("session_start", "turn_start", "completion", "error", "session_end"),
+                        help="lifecycle kind for a no-send illustrative preview")
     args = parser.parse_args()
     if args.value and args.command != "verbosity":
         parser.error("a positional level is only valid after verbosity")
     if args.session and args.command != "preview":
         parser.error("--session is only valid for the no-send preview command")
+    if args.event and args.command != "preview":
+        parser.error("--event is only valid for the no-send preview command")
+    if args.session and args.event not in (None, "completion"):
+        parser.error("saved sessions can preview completion text only")
     level = selected_verbosity(args.verbosity)
     if args.command == "verbosity":
         if args.value:
@@ -299,7 +313,7 @@ def main():
         print("Telegram alert verbosity: " + selected_verbosity())
         return
     if args.command == "preview":
-        print("Preview only, not sent (" + level + "):\n" + preview_text(level, args.session))
+        print("Preview only, not sent (" + level + "):\n" + preview_text(level, args.session, args.event))
         return
     if args.command == "alert":
         message = alert_message(os.environ, args.min_seconds, level)
