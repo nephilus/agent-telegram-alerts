@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jcode-telegram-alerts"
 dynamic = ["version"]
-description = "Unofficial readable Telegram completion alerts for Jcode"
+description = "Unofficial event-aware Telegram alerts for Jcode"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -36,7 +36,7 @@ jcode-telegram = "jcode_telegram:cli"
 jcode-telegram-hook = "hook_install:cli"
 
 [tool.setuptools]
-py-modules = ["jcode_telegram", "alert_format", "hook_install"]
+py-modules = ["jcode_telegram", "alert_format", "alert_policy", "hook_install"]
 
 [tool.setuptools.dynamic]
 version = {file = ["version.txt"]}

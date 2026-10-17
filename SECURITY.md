@@ -26,7 +26,9 @@ The helper:
 - Omits unbound prompt context on failure and prefers the current error over stale successful output.
 - Does not use reasoning, images, or tool-result blocks as request context.
 - Uses explicit UTF-16 bold entities rather than interpreting task text as HTML or Markdown.
-- Writes configuration/backups, preferences, hook ownership, and receipts with mode 0600.
+- Writes configuration/backups, preferences, hook ownership, policy state and receipts with mode 0600.
+- Does not reuse earlier request/response text for session-start, working or closure events.
+- Scopes editable status-card IDs to a hashed session and destination, so relinking does not edit an old destination.
 
 These controls do not defend against a compromised local user account, malicious replacements of installed code, a compromised Telegram account/bot, or hostile native Jcode components. Protect the installation directory and the parent directories of Jcode state. File-level symlink checks are not a substitute for an owner-controlled filesystem.
 
@@ -40,7 +42,9 @@ Checks in the notification are excerpts from the assistant response. They are no
 
 `JCODE_HOME` defaults to `~/.jcode`. It contains credentials, session data, configuration backups, preferences, hook ownership metadata, and latest-receipt diagnostics. None belongs in this repository, release artifacts, CI secrets, public screenshots, or issue attachments. Backups can contain live credentials.
 
-`jcode-telegram-hook uninstall` removes only the manifest-owned completion hook and preserves native settings. `jcode-telegram disable` also disables the native Telegram flags, so those commands are not interchangeable.
+`jcode-telegram-hook uninstall` removes only the manifest-owned hooks and preserves native settings. Explicit legacy migration refuses ambiguous commands instead of silently taking ownership. Moshi deduplication removes only exact recognized duplicate registrations and preserves unrelated commands. `jcode-telegram disable` also disables the native Telegram flags, so those commands are not interchangeable.
+
+Policy/card state stores only one-way fingerprints, timestamps, counters and Telegram message IDs. Explicit session filters remain in the private policy file. Existing state is validated before it can select a card to edit. Protect the notifications directory against other local users. Neither cooldowns nor message editing provide guaranteed exactly-once delivery if Telegram accepts a request but the connection fails before acknowledgment, or the process crashes before local state is durable.
 
 ## Supply chain and releases
 

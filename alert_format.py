@@ -204,6 +204,30 @@ def render(environment, verbosity="expanded", prompt="", secrets=()):
     return render_message(environment, verbosity, prompt, secrets)["text"]
 
 
+def render_lifecycle_message(environment, verbosity="expanded", secrets=()):
+    """Render only lifecycle metadata, never an earlier turn's prompt or response."""
+    states = {
+        "session_start": ("▶️", "Jcode session active", "Session opened, attached, or resumed."),
+        "turn_start": ("🔄", "Jcode working", "A turn is running. Its result is not available yet."),
+        "session_end": ("⏹", "Jcode session closed", "Normal closure, not proof of task success."),
+    }
+    event = environment.get("JCODE_HOOK_EVENT")
+    if event not in states:
+        raise ValueError("Unsupported lifecycle event.")
+    icon, heading, state = states[event]
+    project = Path(str(environment.get("JCODE_HOOK_CWD", ""))).name or "Jcode"
+    project = clip(" ".join(sanitize(project, secrets).split()), 3, 36) or "Jcode"
+    profile = PROFILES[verbosity]
+    original = f"{icon} {heading}\n{project}\n\n📍 State:\n{state}"
+    text = clip(original, profile["words"], profile["chars"])
+    spans = [(len(icon) + 1, len(icon) + 1 + len(heading)),
+             (original.index("State:"), original.index("State:") + len("State:"))]
+    entities = [{"type": "bold", "offset": utf16_length(text[:start]),
+                 "length": utf16_length(text[start:end])}
+                for start, end in spans if end <= len(text)]
+    return {"text": text, "entities": entities, "prompt_available": False}
+
+
 def prepend_message(message, prefix):
     """Shift trusted entities when adding an illustrative test notice."""
     shift = utf16_length(prefix)

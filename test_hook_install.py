@@ -355,6 +355,285 @@ class HookInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn('SUPER_SECRET', result.stdout + result.stderr)
 
+    def lifecycle(self, **kwargs):
+        return hook.manage('install', str(self.exe), events='lifecycle', **kwargs)
+
+    def test_lifecycle_preservation_idempotence_and_uninstall(self):
+        self.config.write_text('# global\n[telegram]\nenabled=false\nbot_token="fixture-secret"\n'
+                               '[hooks]\n# hooks\nturn_start="foreign" # tail\n'
+                               '[native]\nconfirmation=true\n')
+        original = self.doc()
+        self.assertEqual(self.lifecycle(), 'installed')
+        manifest = json.loads(self.manifest.read_text())
+        self.assertEqual(manifest['version'], 2)
+        self.assertEqual(set(manifest['commands']), set(hook.EVENTS))
+        for event in hook.EVENTS:
+            command = manifest['commands'][event]
+            self.assertEqual(shlex.split(command), [str(self.exe), 'event', '--min-seconds', '30'])
+            self.assertEqual(self.doc()['hooks'][event].count(command), 1)
+        for key in ('telegram', 'native'):
+            self.assertEqual(self.doc()[key], original[key])
+        for comment in ('# global', '# hooks', '# tail'):
+            self.assertIn(comment, self.config.read_text())
+        before = hook._snapshot(self.config), hook._snapshot(self.manifest)
+        self.lifecycle()
+        # Both the old API and CLI preserve an already owned lifecycle set.
+        self.install()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(hook.cli(['install', '--command', str(self.exe)]), 0)
+        self.assertEqual(before, (hook._snapshot(self.config), hook._snapshot(self.manifest)))
+        self.assertEqual(hook.manage('uninstall'), 'missing')
+        self.assertEqual(self.doc()['hooks']['turn_start'], ['foreign'])
+        self.assertTrue(all(not self.doc()['hooks'][event] for event in hook.EVENTS if event != 'turn_start'))
+        self.assertFalse(self.manifest.exists())
+
+    def test_cli_defaults_and_v1_preservation(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(hook.cli(['install', '--command', str(self.exe)]), 0)
+        self.assertEqual(json.loads(self.manifest.read_text())['version'], 2)
+        hook.manage('uninstall')
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(hook.cli(['install', '--events', 'turn_end', '--command', str(self.exe)]), 0)
+        self.assertEqual(json.loads(self.manifest.read_text())['version'], 1)
+        before = self.config.read_bytes(), self.manifest.read_bytes()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(hook.cli(['install', '--command', str(self.exe)]), 0)
+        self.assertEqual(before, (self.config.read_bytes(), self.manifest.read_bytes()))
+        hook.manage('uninstall')
+
+    def test_exact_legacy_migration(self):
+        for suffix in (' alert', ' alert --min-seconds 12'):
+            with self.subTest(suffix=suffix):
+                legacy = shlex.quote(str(self.exe)) + suffix
+                foreign = ['echo foreign', 'moshi-hook jcode-hook']
+                self.config.write_text('# keep\n[hooks]\nturn_end=' + json.dumps(foreign + [legacy]) + ' # tail\n')
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(hook.cli(['install', '--command', str(self.exe),
+                                               '--from-command', str(self.exe)]), 0)
+                self.assertEqual(json.loads(self.manifest.read_text())['version'], 2)
+                self.assertEqual(self.doc()['hooks']['turn_end'][:2], foreign)
+                self.assertNotIn(legacy, self.doc()['hooks']['turn_end'])
+                self.assertIn('# tail', self.config.read_text())
+                hook.manage('uninstall')
+                self.assertEqual(self.doc()['hooks']['turn_end'], foreign)
+
+    def test_migration_refuses_wrappers_ambiguity_and_path_mismatch(self):
+        direct = shlex.quote(str(self.exe)) + ' alert'
+        cases = [[direct, direct], ['env X=y ' + direct], ['sh -c ' + shlex.quote(direct)],
+                 [direct + ' && true'], [direct + ' --min-seconds nope'],
+                 [direct + ' --min-seconds 1 extra'], [direct + ' # comment'],
+                 [shlex.quote(str(self.exe) + '-other') + ' alert'], [direct + ' --min-seconds=-1']]
+        for entries in cases:
+            with self.subTest(entries=entries):
+                self.config.write_text('hooks.turn_end=' + json.dumps(entries))
+                before = self.config.read_bytes()
+                with self.assertRaises(hook.HookError):
+                    self.lifecycle(from_command=str(self.exe))
+                self.assertEqual(self.config.read_bytes(), before)
+                self.assertFalse(self.manifest.exists())
+        self.config.write_text('hooks.turn_end=' + json.dumps([direct]))
+        with self.assertRaises(hook.HookError):
+            self.lifecycle(from_command='relative/jcode-telegram')
+
+    def test_migration_activation_failure_restores_legacy_and_no_ownership(self):
+        legacy = shlex.quote(str(self.exe)) + ' alert'
+        self.config.write_text('hooks.turn_end=' + json.dumps([legacy, 'foreign']))
+        before = self.config.read_bytes()
+        real = hook._atomic
+        def fail_config(path, *args, **kwargs):
+            if path == self.config:
+                self.assertEqual(json.loads(self.manifest.read_text())['version'], 2)
+                raise OSError('private fixture failure')
+            return real(path, *args, **kwargs)
+        with patch.object(hook, '_atomic', side_effect=fail_config):
+            with self.assertRaises(hook.HookError):
+                self.lifecycle(from_command=str(self.exe))
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertFalse(self.manifest.exists())
+
+    def test_lifecycle_drift_and_inactive_preparation_refused(self):
+        self.lifecycle()
+        manifest = self.manifest.read_bytes()
+        data = self.doc()
+        data['hooks']['session_end'].clear()
+        self.config.write_text('[hooks]\n' + '\n'.join(k + '=' + json.dumps(v) for k, v in data['hooks'].items()))
+        before = self.config.read_bytes()
+        for action in ('status', 'install', 'uninstall'):
+            with self.assertRaises(hook.HookError):
+                hook.manage(action, str(self.exe))
+        self.assertEqual(self.manifest.read_bytes(), manifest)
+        self.assertEqual(self.config.read_bytes(), before)
+        self.config.write_text('# inactive prepared manifest\n')
+        with self.assertRaises(hook.HookError):
+            self.lifecycle()
+        with self.assertRaises(hook.HookError):
+            hook.manage('status')
+
+    def test_v2_manifest_validation(self):
+        self.manifest.parent.mkdir()
+        for commands in ({}, {'foreign': 'command'}, {'turn_end': 3}, {'turn_end': ''}, []):
+            self.manifest.write_text(json.dumps({'version': 2, 'commands': commands}))
+            with self.assertRaises(hook.HookError):
+                self.lifecycle()
+            self.assertFalse(self.config.exists())
+
+    def test_event_hook_detection_and_unowned_refusal_across_events(self):
+        command = hook._command(str(self.exe), 30, 'event')
+        self.assertTrue(hook._is_alert_hook(command))
+        self.assertTrue(hook._is_alert_hook('sh -c ' + shlex.quote(command)))
+        self.config.write_text('hooks.session_start=' + json.dumps(command))
+        with self.assertRaises(hook.HookError):
+            self.lifecycle()
+        self.assertFalse(self.manifest.exists())
+
+    def moshi_fixture(self):
+        moshi = "'/fixture bin/moshi-hook' jcode-hook"
+        foreign = ['jcode-telegram alert', 'echo foreign', 'echo foreign',
+                   'env X=y moshi-hook jcode-hook', 'moshi-hook jcode-hook extra']
+        self.config.write_text('# global\n[telegram]\nbot_token="fixture-secret"\nenabled=false\n'
+                               '[native]\nconfirmation=true\n[hooks]\n' +
+                               '\n'.join(event + '=' + json.dumps([moshi] * 5 + foreign) + ' # ' + event
+                                         for event in hook.EVENTS) + '\n')
+        return moshi, foreign
+
+    def test_dedupe_four_events_preserves_everything_else_and_noop(self):
+        moshi, foreign = self.moshi_fixture()
+        before = self.doc()
+        self.assertEqual(hook.dedupe_moshi(), 16)
+        after = self.doc()
+        self.assertEqual(after['telegram'], before['telegram'])
+        self.assertEqual(after['native'], before['native'])
+        for event in hook.EVENTS:
+            self.assertEqual(after['hooks'][event], [moshi] + foreign)
+            self.assertIn('# ' + event, self.config.read_text())
+        self.assertFalse(self.manifest.exists())
+        backups = list(self.home.glob('config.toml.backup-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(tomllib.loads(backups[0].read_text()), before)
+        self.assertEqual(stat.S_IMODE(backups[0].stat().st_mode), 0o600)
+        snapshot = hook._snapshot(self.config)
+        with patch.object(hook, '_atomic', side_effect=AssertionError('no write')):
+            self.assertEqual(hook.dedupe_moshi(), 0)
+        self.assertEqual(hook._snapshot(self.config), snapshot)
+        self.assertEqual(list(self.home.glob('config.toml.backup-*')), backups)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(hook.cli(['dedupe-moshi']), 0)
+        self.assertEqual(output.getvalue(), '0\n')
+
+    def test_dedupe_only_exact_recognized_strings(self):
+        values = ['moshi-hook jcode-hook', "'moshi-hook' jcode-hook",
+                  'moshi-hook jcode-hook', "'moshi-hook' jcode-hook",
+                  'other jcode-hook', 'other jcode-hook', 'moshi-hook alert', 'moshi-hook alert']
+        self.config.write_text('hooks.turn_end=' + json.dumps(values))
+        self.assertEqual(hook.dedupe_moshi(), 2)
+        self.assertEqual(self.doc()['hooks']['turn_end'], values[:2] + values[4:])
+
+    def test_dedupe_malformed_symlink_and_concurrent_refusal(self):
+        self.config.write_text('[hooks]\nsession_end=[3]')
+        before = self.config.read_bytes()
+        with self.assertRaises(hook.HookError):
+            hook.dedupe_moshi()
+        self.assertEqual(self.config.read_bytes(), before)
+        self.config.unlink()
+        target = self.home / 'target'
+        target.write_text('')
+        self.config.symlink_to(target)
+        with self.assertRaises(hook.HookError):
+            hook.dedupe_moshi()
+        self.config.unlink()
+        self.moshi_fixture()
+        real = hook._edit
+        def concurrent(*args):
+            result = real(*args)
+            self.config.write_text('# external\n')
+            return result
+        with patch.object(hook, '_edit', side_effect=concurrent):
+            with self.assertRaises(hook.HookError):
+                hook.dedupe_moshi()
+        self.assertEqual(self.config.read_text(), '# external\n')
+        self.assertFalse(list(self.home.glob('config.toml.backup-*')))
+
+    def test_dedupe_preserves_manifest_and_guards_concurrent_manifest(self):
+        self.moshi_fixture()
+        self.manifest.parent.mkdir()
+        self.manifest.write_text('foreign untouched manifest')
+        self.assertEqual(hook.dedupe_moshi(), 16)
+        self.assertEqual(self.manifest.read_text(), 'foreign untouched manifest')
+        self.moshi_fixture()
+        real = hook._edit
+        before = self.config.read_bytes()
+        def concurrent(*args):
+            result = real(*args)
+            self.manifest.write_text('external edit')
+            return result
+        with patch.object(hook, '_edit', side_effect=concurrent):
+            with self.assertRaises(hook.HookError):
+                hook.dedupe_moshi()
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertEqual(self.manifest.read_text(), 'external edit')
+
+    def test_owned_v1_preserved_and_not_adopted_by_legacy_migration(self):
+        self.install()
+        before = self.config.read_bytes(), self.manifest.read_bytes()
+        with self.assertRaises(hook.HookError):
+            self.lifecycle(from_command=str(self.exe))
+        self.assertEqual(before, (self.config.read_bytes(), self.manifest.read_bytes()))
+        self.assertEqual(hook.manage('status'), 'installed')
+        self.assertEqual(hook.manage('uninstall'), 'missing')
+
+    def test_lifecycle_single_config_replacement_and_foreign_manifest_guard(self):
+        replaced = []
+        real = hook.os.replace
+        def record(source, destination):
+            replaced.append(Path(destination))
+            if Path(destination) == self.config:
+                self.assertEqual(json.loads(self.manifest.read_text())['version'], 2)
+            return real(source, destination)
+        with patch.object(hook.os, 'replace', side_effect=record):
+            self.lifecycle()
+        self.assertEqual(replaced.count(self.config), 1)
+        self.assertLess(replaced.index(self.manifest), replaced.index(self.config))
+        hook.manage('uninstall')
+        original = self.config.read_bytes()
+        real_atomic = hook._atomic
+        def foreign_manifest(path, *args, **kwargs):
+            if path == self.config:
+                self.manifest.write_text('{"version":1,"command":"foreign"}')
+            return real_atomic(path, *args, **kwargs)
+        with patch.object(hook, '_atomic', side_effect=foreign_manifest):
+            with self.assertRaises(hook.HookError):
+                self.lifecycle()
+        self.assertEqual(self.config.read_bytes(), original)
+        self.assertEqual(json.loads(self.manifest.read_text())['command'], 'foreign')
+
+    def test_dedupe_missing_noop_and_lock_symlink(self):
+        with patch.object(hook, '_backup', side_effect=AssertionError('no backup')):
+            self.assertEqual(hook.dedupe_moshi(), 0)
+        self.assertFalse(self.config.exists())
+        lock = self.manifest.parent / '.telegram-hook.lock'
+        lock.unlink()
+        target = self.home / 'target'
+        target.write_text('fixture')
+        lock.symlink_to(target)
+        self.moshi_fixture()
+        before = self.config.read_bytes()
+        with self.assertRaises((hook.HookError, OSError)):
+            hook.dedupe_moshi()
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertEqual(target.read_text(), 'fixture')
+
+    def test_dedupe_write_failure_leaves_original(self):
+        self.moshi_fixture()
+        before = self.config.read_bytes()
+        with patch.object(hook.os, 'replace', side_effect=OSError('fixture-secret')):
+            output = io.StringIO()
+            with redirect_stderr(output), redirect_stdout(io.StringIO()):
+                self.assertEqual(hook.cli(['dedupe-moshi']), 1)
+        self.assertNotIn('fixture-secret', output.getvalue())
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertFalse(self.manifest.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -28,6 +28,14 @@ runs:
         "$smoke_dir/venv/bin/jcode-telegram" --help
         "$smoke_dir/venv/bin/jcode-telegram" --version
         "$smoke_dir/venv/bin/jcode-telegram" preview
+        for event in session_start turn_start completion error session_end; do
+          "$smoke_dir/venv/bin/jcode-telegram" preview --event "$event"
+        done
+        "$smoke_dir/venv/bin/jcode-telegram" policy
+        "$smoke_dir/venv/bin/jcode-telegram" policy attention --enable completion --cooldown-seconds 300
+        "$smoke_dir/venv/bin/jcode-telegram" policy balanced --status-card off
         "$smoke_dir/venv/bin/jcode-telegram-hook" --help
+        "$smoke_dir/venv/bin/jcode-telegram-hook" dedupe-moshi
         "$smoke_dir/venv/bin/jcode-telegram-hook" install
+        "$smoke_dir/venv/bin/jcode-telegram-hook" status
         "$smoke_dir/venv/bin/jcode-telegram-hook" uninstall
