@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.2.1...v0.3.0) (2026-10-17)
+
+
+### Features
+
+* include explicitly named sessions in alerts ([#8](https://github.com/nephilus/jcode-telegram-alerts/issues/8)) ([eb98445](https://github.com/nephilus/jcode-telegram-alerts/commit/eb98445cd0762968cf9734574ff71ea8b14a900b))
+
 ## [0.2.1](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.2.0...v0.2.1) (2026-10-17)
 
 
