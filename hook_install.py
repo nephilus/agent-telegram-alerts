@@ -1,4 +1,4 @@
-"""Private, conservative registration of the jcode-telegram turn-end hook."""
+"""Private, conservative registration of jcode-telegram lifecycle hooks."""
 from __future__ import annotations
 
 import argparse
@@ -94,26 +94,29 @@ def _parse(raw):
         raise HookError("Invalid TOML configuration. No changes made.") from None
 
 
-def _hooks(document):
+EVENTS = ("session_start", "turn_start", "turn_end", "session_end")
+
+
+def _hooks(document, event="turn_end"):
     hooks = document.get("hooks", {})
     if not isinstance(hooks, dict):
         raise HookError("Unsupported hooks configuration.")
-    value = hooks.get("turn_end")
+    value = hooks.get(event)
     if value is not None and not (isinstance(value, str) or
             isinstance(value, list) and all(isinstance(v, str) for v in value)):
-        raise HookError("Unsupported turn-end configuration.")
+        raise HookError("Unsupported hook event configuration.")
     return value
 
 
-def _edit(raw, document, value):
+def _edit(raw, document, value, event="turn_end"):
     """Choose a surgical edit only if the entire parsed result is exactly expected."""
     text = raw.decode("utf-8")
     expected = copy.deepcopy(document)
-    expected.setdefault("hooks", {})["turn_end"] = value
+    expected.setdefault("hooks", {})[event] = value
     encoded = json.dumps(value, ensure_ascii=False)
     candidates = []
     # Quoted keys and dotted keys are accepted when the semantic check agrees.
-    key = r'(?:turn_end|"turn_end"|\'turn_end\')'
+    key = r'(?:' + event + '|"' + event + '"|\'' + event + '\')'
     pattern = r'(?m)^[ \t]*(?:(?:hooks|"hooks"|\'hooks\')[ \t]*\.[ \t]*)?' + key + r'[ \t]*=[ \t]*'
     for match in re.finditer(pattern, text):
         start = match.end()
@@ -136,12 +139,12 @@ def _edit(raw, document, value):
                 replacement = encoded[:-1] + "\n" + "\n".join(comments) + "\n]"
             candidates.append(text[:start] + replacement + text[stop:])
             break
-    if "turn_end" not in document.get("hooks", {}):
-        candidates.append("hooks.turn_end = " + encoded + "\n" + text)
+    if event not in document.get("hooks", {}):
+        candidates.append("hooks." + event + " = " + encoded + "\n" + text)
         for header in re.finditer(r'(?m)^[ \t]*\[[ \t]*(?:hooks|"hooks"|\'hooks\')[ \t]*\][^\n]*(?:\n|$)', text):
             pos = header.end()
             candidates.append(text[:pos] + ("\n" if pos and text[pos-1] != "\n" else "") +
-                              "turn_end = " + encoded + "\n" + text[pos:])
+                              event + " = " + encoded + "\n" + text[pos:])
     valid = []
     for candidate in candidates:
         try:
@@ -154,7 +157,7 @@ def _edit(raw, document, value):
     return valid[0].encode("utf-8")
 
 
-def _command(explicit, seconds):
+def _command(explicit, seconds, verb="alert"):
     if explicit is None:
         sibling = Path(sys.argv[0]).absolute().parent / "jcode-telegram"
         explicit = str(sibling) if sibling.is_file() and os.access(sibling, os.X_OK) else shutil.which("jcode-telegram")
@@ -165,7 +168,7 @@ def _command(explicit, seconds):
         raise HookError("Command must be an existing executable file.")
     # Always quote, including paths that shlex.quote would leave bare.
     quoted = "'" + str(path).replace("'", "'\"'\"'") + "'"
-    return f"{quoted} alert --min-seconds {seconds}"
+    return f"{quoted} {verb} --min-seconds {seconds}"
 
 
 def _is_alert_hook(command):
@@ -178,85 +181,154 @@ def _is_alert_hook(command):
     except ValueError:
         # Ambiguous malformed legacy commands must not silently get a duplicate.
         return bool(re.search(r"jcode[-_]telegram(?:\.py)?", command) and
-                    re.search(r"\balert\b", command))
-    return any(Path(executable).name in
-               {"jcode-telegram", "jcode-telegram.py", "jcode_telegram.py"}
-               and argument == "alert"
-               for executable, argument in zip(words, words[1:]))
+                    re.search(r"\b(?:alert|event)\b", command))
+    direct = any(Path(executable).name in
+                 {"jcode-telegram", "jcode-telegram.py", "jcode_telegram.py"}
+                 and argument in {"alert", "event"}
+                 for executable, argument in zip(words, words[1:]))
+    return direct or any(word != command and re.search(r"jcode[-_]telegram", word)
+                         and _is_alert_hook(word) for word in words)
 
 
-def manage(action, command=None, min_seconds=30):
+def _entries(document, event):
+    value = _hooks(document, event)
+    return [value] if isinstance(value, str) else list(value or [])
+
+
+def _ownership(snapshot):
+    if snapshot is None:
+        return None
+    try:
+        data = json.loads(snapshot[-1])
+        if type(data.get("version")) is not int:
+            raise ValueError
+        if data["version"] == 1 and set(data) == {"version", "command"}:
+            commands = {"turn_end": data["command"]}
+        elif data["version"] == 2 and set(data) == {"version", "commands"}:
+            commands = data["commands"]
+        else:
+            raise ValueError
+        if not isinstance(commands, dict) or not commands or not set(commands) <= set(EVENTS):
+            raise ValueError
+        if not all(isinstance(v, str) and v for v in commands.values()):
+            raise ValueError
+        return data, commands
+    except (ValueError, TypeError, KeyError, UnicodeError, AttributeError):
+        raise HookError("Invalid ownership manifest. No changes made.") from None
+
+
+def _backup(home, raw):
+    fd, name = tempfile.mkstemp(prefix="config.toml.backup-", dir=home)
+    with os.fdopen(fd, "wb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    _sync_directory(home)
+
+
+def _legacy_match(command, executable):
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        words = list(lexer)
+    except ValueError:
+        return False
+    return (len(words) in (2, 4) and words[:2] == [executable, "alert"] and
+            (len(words) == 2 or words[2] == "--min-seconds" and
+             re.fullmatch(r"[0-9]+", words[3]) is not None))
+
+
+def manage(action, command=None, min_seconds=30, events=None, from_command=None,
+           *, _cli_default=False):
+    """Old API defaults to v1. CLI defaults apply only to new installations."""
     if type(min_seconds) is not int or min_seconds < 0:
         raise HookError("Minimum seconds must be a nonnegative integer.")
+    if events not in (None, "lifecycle", "turn_end"):
+        raise HookError("Unsupported event selection.")
+    if action not in ("install", "uninstall", "status") or from_command is not None and action != "install":
+        raise HookError("Unknown operation or migration option.")
     home = Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode")))
     config = home / "config.toml"
     manifest = home / "notifications" / "telegram-hook.json"
     with _lock(home):
-        before = _snapshot(config)
-        owned_before = _snapshot(manifest)
-        owned = None
-        if owned_before is not None:
-            try:
-                data = json.loads(owned_before[-1])
-                if set(data) != {"version", "command"} or type(data["version"]) is not int or data["version"] != 1 or not isinstance(data["command"], str) or not data["command"]:
-                    raise ValueError
-                owned = data["command"]
-            except (ValueError, TypeError, KeyError, UnicodeError):
-                raise HookError("Invalid ownership manifest. No changes made.") from None
-        if action == "uninstall" and owned is None:
+        before, owned_before = _snapshot(config), _snapshot(manifest)
+        ownership = _ownership(owned_before)
+        owned = ownership[1] if ownership else {}
+        if action == "uninstall" and not owned:
             return "missing"
         raw = before[-1] if before else b""
         document = _parse(raw)
-        old = _hooks(document)
-        entries = [old] if isinstance(old, str) else list(old or [])
+        entries = {event: _entries(document, event) for event in EVENTS}
+        if owned and any(entries[event].count(value) != 1 for event, value in owned.items()):
+            raise HookError("Ownership does not match configuration.")
         if action == "status":
-            if owned is None:
-                return "missing"
-            if entries.count(owned) != 1:
-                raise HookError("Ownership does not match configuration.")
-            return "installed"
-        desired = _command(command, min_seconds) if action == "install" else None
-        if owned is not None and (entries.count(owned) != 1 or desired is not None and owned != desired):
-            raise HookError("Ownership does not match requested hook. No changes made.")
-        if action == "install":
-            if any(entry != owned and (entry == desired or _is_alert_hook(entry))
-                   for entry in entries):
-                raise HookError("Unowned Telegram alert hook exists. Remove or migrate the old manual hook first.")
-            if owned is not None:
-                return "installed"
-            entries.append(desired)
-        elif action == "uninstall":
-            entries.remove(owned)
+            return "installed" if owned else "missing"
+        if events is None and owned:
+            selected = tuple(owned)
+            version = ownership[0]["version"]
         else:
-            raise HookError("Unknown operation.")
-        updated = _edit(raw, document, entries)
+            selection = events or ("lifecycle" if _cli_default or from_command is not None else "turn_end")
+            selected = EVENTS if selection == "lifecycle" else ("turn_end",)
+            version = 2 if selection == "lifecycle" else 1
+        desired = {}
+        if action == "install":
+            value = _command(command, min_seconds, "event" if version == 2 else "alert")
+            desired = dict.fromkeys(selected, value)
+            if owned and owned != desired:
+                raise HookError("Ownership does not match requested hook. No changes made.")
+            legacy = None
+            if from_command is not None:
+                if owned or events == "turn_end":
+                    raise HookError("Migration requires unowned legacy lifecycle registration.")
+                path = Path(from_command)
+                if not path.is_absolute():
+                    raise HookError("Migration requires an absolute executable path.")
+                executable = shlex.split(_command(str(path), min_seconds))[0]
+                matches = [(event, entry) for event in EVENTS for entry in entries[event]
+                           if _legacy_match(entry, executable)]
+                if len(matches) != 1 or matches[0][0] != "turn_end":
+                    raise HookError("Legacy hook is missing, ambiguous, or mismatched.")
+                legacy = matches[0][1]
+            for event in EVENTS:
+                for entry in entries[event]:
+                    if entry != owned.get(event) and not (event == "turn_end" and entry == legacy) and (
+                            entry in desired.values() or _is_alert_hook(entry)):
+                        raise HookError("Unowned Telegram alert hook exists. Remove or migrate the old manual hook first.")
+            if owned:
+                return "installed"
+            if legacy is not None:
+                entries["turn_end"].remove(legacy)
+            for event, value in desired.items():
+                entries[event].append(value)
+        else:
+            for event, value in owned.items():
+                entries[event].remove(value)
+        updated = raw
+        for event in EVENTS:
+            if entries[event] != _entries(document, event):
+                # Keep the historical three-argument editor call for turn_end.
+                if event == "turn_end":
+                    updated = _edit(updated, _parse(updated), entries[event])
+                else:
+                    updated = _edit(updated, _parse(updated), entries[event], event)
         _same(config, before)
         _same(manifest, owned_before)
         if before is not None:
-            fd, backup = tempfile.mkstemp(prefix="config.toml.backup-", dir=home)
-            with os.fdopen(fd, "wb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(raw)
-                stream.flush()
-                os.fsync(stream.fileno())
+            _backup(home, raw)
         _same(config, before)
         _same(manifest, owned_before)
         if action == "install":
-            # Ownership is durable before a new hook can become active. An
-            # interrupted preparation may leave an inactive manifest, never an
-            # active hook without its ownership record.
-            payload = (json.dumps({"version": 1, "command": desired}) + "\n").encode()
-            _atomic(manifest, payload, owned_before)
+            data = {"version": 1, "command": desired["turn_end"]} if version == 1 else {"version": 2, "commands": desired}
+            payload = (json.dumps(data) + "\n").encode()
+            _atomic(manifest, payload, owned_before, guard=lambda: _same(config, before))
             prepared = _snapshot(manifest)
             if prepared is None or prepared[-1] != payload:
                 raise HookError("Ownership changed during preparation. No hook activated.")
             try:
-                _atomic(config, updated, before,
-                        guard=lambda: _same(manifest, prepared))
+                _atomic(config, updated, before, guard=lambda: _same(manifest, prepared))
             except Exception:
-                # Remove only our unchanged preparation, and only when the
-                # config is still the original. If activation or an external
-                # edit occurred, retain ownership rather than orphan a hook.
                 try:
                     _same(config, before)
                     _same(manifest, prepared)
@@ -266,22 +338,70 @@ def manage(action, command=None, min_seconds=30):
                     pass
                 raise HookError("Hook activation failed. Inspect local ownership state before retrying.") from None
             return "installed"
-        _atomic(config, updated, before,
-                guard=lambda: _same(manifest, owned_before))
+        _atomic(config, updated, before, guard=lambda: _same(manifest, owned_before))
         _same(manifest, owned_before)
         manifest.unlink()
         _sync_directory(manifest.parent)
         return "missing"
 
 
+def _is_moshi(command):
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        words = list(lexer)
+        return len(words) == 2 and Path(words[0]).name == "moshi-hook" and words[1] == "jcode-hook"
+    except ValueError:
+        return False
+
+
+def dedupe_moshi():
+    """Remove only repeated exact direct Moshi strings, never claim ownership."""
+    home = Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode")))
+    config = home / "config.toml"
+    manifest = home / "notifications" / "telegram-hook.json"
+    with _lock(home):
+        before, owned_before = _snapshot(config), _snapshot(manifest)
+        raw = before[-1] if before else b""
+        document = _parse(raw)
+        updated, removed = raw, 0
+        for event in EVENTS:
+            values = _entries(document, event)
+            seen, kept = set(), []
+            for value in values:
+                if _is_moshi(value) and value in seen:
+                    removed += 1
+                else:
+                    kept.append(value)
+                seen.add(value)
+            if kept != values:
+                updated = _edit(updated, _parse(updated), kept, event)
+        if not removed:
+            return 0
+        _same(config, before)
+        _same(manifest, owned_before)
+        _backup(home, raw)
+        _atomic(config, updated, before, guard=lambda: _same(manifest, owned_before))
+        return removed
+
+
 def cli(argv=None):
     parser = argparse.ArgumentParser(description="Register or deregister the Telegram hook. Package removal is separate (pip/venv).")
-    parser.add_argument("action", choices=("install", "uninstall", "status"))
+    parser.add_argument("action", choices=("install", "uninstall", "status", "dedupe-moshi"))
     parser.add_argument("--command", metavar="PATH")
     parser.add_argument("--min-seconds", type=int, default=30)
+    parser.add_argument("--events", choices=("lifecycle", "turn_end"), help="New installs default to lifecycle, existing installs retain their events.")
+    parser.add_argument("--from-command", metavar="PATH")
     args = parser.parse_args(argv)
     try:
-        print(manage(args.action, args.command, args.min_seconds))
+        if args.action == "dedupe-moshi":
+            if args.command is not None or args.events is not None or args.from_command is not None:
+                raise HookError("Unsupported dedupe option.")
+            print(dedupe_moshi())
+        else:
+            print(manage(args.action, args.command, args.min_seconds, args.events,
+                         args.from_command, _cli_default=True))
         return 0
     except HookError as exc:
         print(str(exc), file=sys.stderr)
