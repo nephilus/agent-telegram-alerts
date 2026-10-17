@@ -42,6 +42,34 @@ class ConsoleTests(unittest.TestCase):
             app.settings_path().write_text("[" * 1100 + "0" + "]" * 1100)
             self.assertEqual(app.selected_verbosity(), "brief")
 
+    def test_malformed_local_tables_fail_without_disclosing_values(self):
+        for text in ('safety = "PRIVATE_CONFIG_VALUE"\n', 'hooks = "PRIVATE_CONFIG_VALUE"\n'):
+            for command in ("status", "disable"):
+                # Disabling only touches safety, so an unrelated hooks scalar is preserved.
+                if command == "disable" and text.startswith("hooks"):
+                    continue
+                with self.subTest(text=text.split("=")[0], command=command), tempfile.TemporaryDirectory() as directory:
+                    config = Path(directory) / "config.toml"
+                    config.write_text(text)
+                    result = subprocess.run([sys.executable, str(Path(app.__file__)), command],
+                                            env={**os.environ, "JCODE_HOME": directory},
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 1)
+                    self.assertNotIn("PRIVATE_CONFIG_VALUE", result.stdout + result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(config.read_text(), text)
+
+    def test_malformed_receipt_does_not_break_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "notifications" / "telegram-last-alert.json"
+            receipt.parent.mkdir()
+            receipt.write_text('["PRIVATE_DIAGNOSTIC_VALUE"]')
+            result = subprocess.run([sys.executable, str(Path(app.__file__)), "status"],
+                                    env={**os.environ, "JCODE_HOME": directory},
+                                    capture_output=True, text=True, check=True)
+            self.assertIn("none recorded yet", result.stdout)
+            self.assertNotIn("PRIVATE_DIAGNOSTIC_VALUE", result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
