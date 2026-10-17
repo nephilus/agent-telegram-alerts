@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unofficial Telegram completion alerts for Jcode. Python 3.11+, standard library only."""
+"""Unofficial event-aware Telegram alerts for Jcode. Python 3.11+, standard library only."""
 import argparse
 import getpass
 import hashlib
@@ -95,7 +95,7 @@ def update_safety(text, changes):
 
 
 def private_write(path, content):
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(prefix=".telegram-", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as stream:
@@ -168,7 +168,7 @@ def setup():
     save_safety({"telegram_enabled": True, "telegram_bot_token": token,
                  "telegram_chat_id": chat, "telegram_reply_enabled": False})
     print("Linked and test delivered. Config and backup are owner-readable only (0600).")
-    print("Alerts: successful turns lasting 30+ seconds, all failed turns, and native ambient/approval alerts.")
+    print("Alerts: qualifying completions, distinct turn errors, and separately configured native ambient/approval alerts.")
     print("Completion alerts hot-reload. Restart Jcode normally when convenient to refresh any cached ambient channels.")
 
 
@@ -237,6 +237,44 @@ def alert_text(environment, min_seconds=30, verbosity=None):
     return message["text"] if message else None
 
 
+def event_message(environment, verbosity="expanded"):
+    if environment.get("JCODE_HOOK_EVENT") == "turn_end":
+        return alert_message(environment, 0, verbosity)
+    return formatting.render_lifecycle_message(environment, verbosity, alert_secrets())
+
+
+def observe_event(environment, min_seconds=30, verbosity="expanded"):
+    """Best-effort observer: never reveal exceptions or mutate native settings."""
+    if environment.get("JCODE_HOOK_EVENT") not in ("session_start", "turn_start", "turn_end", "session_end"):
+        return
+    try:
+        token, chat = credentials()
+    except SetupError:
+        record_receipt("pending_setup")
+        return
+    except (OSError, ValueError):
+        record_receipt("config_error")
+        return
+    try:
+        import alert_policy
+        destination = hashlib.sha256((token + "\0" + chat).encode()).hexdigest()
+
+        def deliver(method, body):
+            if method not in ("sendMessage", "editMessageText"):
+                raise SetupError("Unsupported notification operation.")
+            return api(token, method, {**body, "chat_id": chat})
+
+        receipt = alert_policy.notify(config_path().parent, environment,
+                                      lambda: event_message(environment, verbosity), deliver,
+                                      destination, verbosity=verbosity, min_seconds=min_seconds)
+        receipt = dict(receipt)
+        state = receipt.pop("state")
+        record_receipt(state, **receipt)
+    except Exception:
+        # Hooks are detached observers. Diagnostics deliberately omit exception values.
+        record_receipt("observer_error")
+
+
 def preview_message(verbosity, session_id=None, event=None):
     if event in ("session_start", "turn_start", "session_end"):
         return formatting.render_lifecycle_message({"JCODE_HOOK_EVENT": event,
@@ -276,13 +314,17 @@ def receipt_path():
 def record_receipt(state, **metadata):
     # Diagnostics contain no session IDs, paths, user content, destinations, or tokens.
     try:
-        private_write(receipt_path(), json.dumps({
+        payload = json.dumps({
             "state": state,
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "recorded_at_ns": time.time_ns(),
             "session_fingerprint": hashlib.sha256(os.environ.get("JCODE_HOOK_SESSION_ID", "").encode()).hexdigest()[:16],
-            **{key: metadata[key] for key in ("verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "formatting_confirmed") if key in metadata},
-        }) + "\n")
+            **{key: metadata[key] for key in ("kind", "grouped", "method", "verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "formatting_confirmed") if key in metadata},
+        }) + "\n"
+        kind = metadata.get("kind")
+        if kind in ("session_start", "turn_start", "completion", "error", "session_end"):
+            private_write(receipt_path().with_name("telegram-last-" + kind + ".json"), payload)
+        private_write(receipt_path(), payload)
     except OSError:
         pass
 
@@ -290,22 +332,78 @@ def record_receipt(state, **metadata):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
-    parser.add_argument("command", choices=("setup", "status", "test", "alert", "disable", "verbosity", "preview"))
-    parser.add_argument("value", nargs="?", choices=tuple(formatting.PROFILES), help="persistent level for the verbosity command")
+    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy"))
+    parser.add_argument("value", nargs="?", help="verbosity level or delivery-policy preset")
     parser.add_argument("--min-seconds", type=int, default=30)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
     parser.add_argument("--session", help="use one saved session for a no-send preview")
     parser.add_argument("--event", choices=("session_start", "turn_start", "completion", "error", "session_end"),
                         help="lifecycle kind for a no-send illustrative preview")
+    kinds = ("session_start", "turn_start", "completion", "error", "session_end")
+    parser.add_argument("--cooldown-seconds", type=int, help="policy: completion interval per session")
+    parser.add_argument("--error-repeat-seconds", type=int, help="policy: suppress repeats of the same error")
+    parser.add_argument("--status-card", choices=("on", "off"), help="policy: optional editable session card")
+    parser.add_argument("--enable", action="append", choices=kinds, help="policy: enable an event kind")
+    parser.add_argument("--disable", action="append", choices=kinds, help="policy: disable an event kind")
+    parser.add_argument("--silent", action="append", choices=kinds, help="policy: send an event without sound")
+    parser.add_argument("--audible", action="append", choices=kinds, help="policy: allow sound for an event")
+    parser.add_argument("--include-session", action="append", help="policy: replace explicit included session IDs")
+    parser.add_argument("--exclude-session", action="append", help="policy: replace explicit excluded session IDs")
+    parser.add_argument("--clear-session-filters", action="store_true", help="policy: clear explicit session filters")
     args = parser.parse_args()
-    if args.value and args.command != "verbosity":
-        parser.error("a positional level is only valid after verbosity")
+    if args.value and args.command not in ("verbosity", "policy"):
+        parser.error("a positional value is only valid after verbosity or policy")
+    if args.command == "verbosity" and args.value and args.value not in formatting.PROFILES:
+        parser.error("choose brief, contextual, or expanded")
+    if args.command == "policy" and args.value and args.value not in ("attention", "balanced", "activity"):
+        parser.error("choose attention, balanced, or activity")
+    policy_options = (args.cooldown_seconds, args.error_repeat_seconds, args.status_card,
+                      args.enable, args.disable, args.silent, args.audible,
+                      args.include_session, args.exclude_session)
+    if args.command != "policy" and (any(value is not None for value in policy_options) or args.clear_session_filters):
+        parser.error("delivery-policy options are only valid after policy")
+    if args.min_seconds < 0 or any(value is not None and not 0 <= value <= 86400
+                                   for value in (args.cooldown_seconds, args.error_repeat_seconds)):
+        parser.error("durations must be nonnegative; policy intervals cannot exceed 86400 seconds")
     if args.session and args.command != "preview":
         parser.error("--session is only valid for the no-send preview command")
     if args.event and args.command != "preview":
         parser.error("--event is only valid for the no-send preview command")
     if args.session and args.event not in (None, "completion"):
         parser.error("saved sessions can preview completion text only")
+    if args.command == "policy":
+        import alert_policy
+        if set(args.enable or []) & set(args.disable or []):
+            parser.error("the same event cannot be enabled and disabled together")
+        if set(args.silent or []) & set(args.audible or []):
+            parser.error("the same event cannot be silent and audible together")
+        if args.clear_session_filters and (args.include_session or args.exclude_session):
+            parser.error("clear filters separately from setting new filters")
+        changes = {}
+        if args.value:
+            changes["preset"] = args.value
+        for argument, key in ((args.cooldown_seconds, "cooldown_seconds"),
+                              (args.error_repeat_seconds, "error_repeat_seconds")):
+            if argument is not None:
+                changes[key] = argument
+        if args.status_card is not None:
+            changes["status_card"] = args.status_card == "on"
+        if args.enable or args.disable:
+            changes["events"] = {**{kind: True for kind in args.enable or []},
+                                 **{kind: False for kind in args.disable or []}}
+        for argument, key in ((args.include_session, "include_sessions"),
+                              (args.exclude_session, "exclude_sessions")):
+            if argument is not None:
+                changes[key] = argument
+        if args.clear_session_filters:
+            changes.update(include_sessions=[], exclude_sessions=[])
+        if changes or args.silent or args.audible:
+            policy = alert_policy.save_policy(config_path().parent, changes,
+                                              silent=args.silent or (), audible=args.audible or ())
+        else:
+            policy = alert_policy.load_policy(config_path().parent)
+        print(json.dumps(policy, indent=2, sort_keys=True))
+        return
     level = selected_verbosity(args.verbosity)
     if args.command == "verbosity":
         if args.value:
@@ -315,34 +413,8 @@ def main():
     if args.command == "preview":
         print("Preview only, not sent (" + level + "):\n" + preview_text(level, args.session, args.event))
         return
-    if args.command == "alert":
-        message = alert_message(os.environ, args.min_seconds, level)
-        if not message:
-            if os.environ.get("JCODE_HOOK_EVENT") == "turn_end":
-                record_receipt("suppressed_short_or_unknown_turn")
-            return
-        try:
-            token, chat = credentials()
-        except SetupError:
-            record_receipt("pending_setup")
-            return
-        except (OSError, ValueError):
-            record_receipt("config_error")
-            return
-        try:
-            text = message["text"]
-            delivered = api(token, "sendMessage", {"chat_id": chat, "text": text, "entities": message["entities"]})
-            receipt = {"verbosity": level, "words": len(text.split()), "characters": len(text),
-                       "text_fingerprint": hashlib.sha256(text.encode()).hexdigest(),
-                       "prompt_available": message["prompt_available"],
-                       "bold_entities": len(message["entities"])}
-            if isinstance(delivered, dict):
-                receipt["telegram_message_id"] = delivered.get("message_id")
-                receipt["response_confirmed"] = delivered.get("text") == text
-                receipt["formatting_confirmed"] = formatting.formatting_confirmed(message, delivered)
-            record_receipt("sent", **receipt)
-        except (SetupError, OSError, ValueError):
-            record_receipt("delivery_failed")
+    if args.command in ("alert", "event"):
+        observe_event(os.environ, args.min_seconds, level)
         return  # An optional detached observer must never disrupt agent work.
     if args.command == "setup":
         setup()
@@ -352,6 +424,10 @@ def main():
         print("Telegram: " + ("configured locally (use 'test' to verify delivery)" if linked else "pending bot creation and private token entry"))
         print("Remote commands: " + ("ENABLED" if safety.get("telegram_reply_enabled") else "disabled"))
         print("Alert verbosity: " + level + f" (up to {formatting.PROFILES[level]['words']} words)")
+        import alert_policy
+        policy = alert_policy.load_policy(config_path().parent)
+        print(f"Delivery policy: {policy['preset']}, completion interval {policy['cooldown_seconds']}s per session")
+        print("Status card: " + ("on" if policy["status_card"] else "off"))
         print("Completion hook: " + ("installed" if "jcode-telegram" in str(load_config().get("hooks", {}).get("turn_end", "")) else "not installed"))
         try:
             receipt = json.loads(receipt_path().read_text())

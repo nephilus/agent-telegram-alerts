@@ -32,6 +32,11 @@ export JCODE_HOME=/path/to/temporary-jcode-home
 /path/to/fresh-smoke-environment/bin/jcode-telegram preview
 /path/to/fresh-smoke-environment/bin/jcode-telegram verbosity brief
 /path/to/fresh-smoke-environment/bin/jcode-telegram preview
+/path/to/fresh-smoke-environment/bin/jcode-telegram preview --event turn_start
+/path/to/fresh-smoke-environment/bin/jcode-telegram policy
+/path/to/fresh-smoke-environment/bin/jcode-telegram policy activity --status-card on
+/path/to/fresh-smoke-environment/bin/jcode-telegram policy balanced --status-card off
+/path/to/fresh-smoke-environment/bin/jcode-telegram-hook dedupe-moshi
 /path/to/fresh-smoke-environment/bin/jcode-telegram-hook install
 /path/to/fresh-smoke-environment/bin/jcode-telegram-hook status
 /path/to/fresh-smoke-environment/bin/jcode-telegram-hook uninstall
@@ -57,7 +62,13 @@ The public repository starts with sanitized source history. Private prototype hi
 
 Only run a live send with the account owner's authorization. Do not put Telegram credentials into CI. Use the configured native private channel, one harmless test task, and the real installed native Jcode entrypoint/hook. In the originally tested Jcode v0.98.1, `--ndjson` invokes turn hooks while `--json` did not.
 
-After the turn, correlate the hook receipt's session fingerprint with the actual native session. Check state `sent`, the selected profile's word/character limits, `response_confirmed`, `bold_entities`, and `formatting_confirmed`. The latest receipt can be overwritten by another turn, so do not mistake a later session's metadata for this test.
+After the turn, correlate the hook receipt's session fingerprint with the actual native session. For ordinary completion delivery, check state `sent`, the selected profile's word/character limits, `response_confirmed`, `bold_entities`, and `formatting_confirmed`. `notifications/telegram-last-alert.json` records the latest decision. Separate `telegram-last-completion.json`, `telegram-last-error.json` and corresponding lifecycle receipts retain the latest decision for each kind, so a disabled closure does not erase completion evidence. These metadata-only receipts can still be overwritten by another session of the same kind.
+
+For event-aware delivery, exercise the real installed hook with two actual turns in the same session. Verify the first completion is acknowledged and the second is `suppressed_cooldown`, with no new delivery. Test activity/card mode in a private isolated helper profile: lifecycle starts create one silent message and completion/closure use `editMessageText` on that message. Check matching message IDs privately, never publish them. Repeated-error suppression, malformed-state refusal and error/card-edit failure isolation also have deterministic fixture tests. Those tests alone do not establish live Telegram acceptance.
+
+Do not weaken global thresholds for a live check. Native process-only `JCODE_HOOK_*` command overrides can select the installed helper with `--min-seconds 0` or an isolated private helper `JCODE_HOME`. Keep credentials out of command arguments, logs and committed files, preserve the normal configuration, and do not start another polling loop. Observe detached hooks before interpreting receipts; event order and crash closure are not guaranteed.
+
+During the event-aware upgrade on October 17, 2026 (UTC), a fresh built wheel completed real Jcode streaming turns using private isolated helper policies and the configured Telegram destination. Two turns in one native session produced one acknowledged expanded completion, then `suppressed_cooldown` with a grouped count of one. A separate short turn in activity/card mode produced acknowledged session-start, turn-start, completion and session-end updates sharing one Telegram message ID. Working/completion/closure used edits, and returned text and bold entities matched. Native configuration and the saved expanded preference were byte-for-byte unchanged. These were real native processes and Telegram server responses, not a mock transport.
 
 The pre-publication implementation completed a real Jcode-to-installed-hook-to-Telegram check. Telegram returned the exact expanded text and all five intended bold ranges. Its private input, destination, session/message identifiers, and raw receipt are not published here. That server acknowledgment does not prove the phone displayed a notification or the account owner read it.
 

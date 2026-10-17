@@ -13,6 +13,7 @@ import jcode_telegram as app
 def event(**changes):
     return {
         "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "ok",
+        "JCODE_HOOK_SESSION_ID": "session_readability_fixture",
         "JCODE_HOOK_DURATION_MS": "95000", "JCODE_HOOK_CWD": "/project/lab🚀",
         "JCODE_HOOK_LAST_ASSISTANT_TEXT": "Result: Added readable alerts.\nChecked: the route check is illustrative.\nNeeds you: review the example.",
         **changes,
