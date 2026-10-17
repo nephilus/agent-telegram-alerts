@@ -34,7 +34,7 @@ These controls do not defend against a compromised local user account, malicious
 
 ## Redaction is not data-loss prevention
 
-Redaction removes common known credential forms, the configured bot token, labeled secret values, code fences, paths, URLs, and email addresses. It is **best effort** and may miss arbitrary private prose, unfamiliar credential formats, encoded secrets, or misleadingly structured text. Do not use it as the sole control protecting confidential projects. Review no-send previews and unregister the hook for work that must not leave the machine.
+Redaction removes common known credential forms, the configured bot token, labeled secret values, code fences, paths inside request/result text, URLs, and email addresses. The explicit `📁` metadata line intentionally displays the native session working-folder path, with home abbreviation and bounded left-side shortening. Folder names can themselves be sensitive, and home abbreviation is not anonymization. Known credentials and credential-shaped values are still scanned before folder shortening. Arbitrary session names and inferred project names are not substituted for missing folder metadata. It is **best effort** and may miss arbitrary private prose, unfamiliar credential formats, encoded secrets, or misleadingly structured text. Do not use it as the sole control protecting confidential projects. Review no-send previews and unregister the hook for work that must not leave the machine.
 
 Checks in the notification are excerpts from the assistant response. They are not independently verified. A successful model turn is not proof that the entire user's goal succeeded.
 

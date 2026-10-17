@@ -294,7 +294,7 @@ def preview_message(verbosity, session_id=None, event=None):
             raise SetupError("No readable public assistant response exists in that session.")
         event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "preview",
                  "JCODE_HOOK_DURATION_MS": "0", "JCODE_HOOK_SESSION_ID": session_id,
-                 "JCODE_HOOK_CWD": session.get("working_dir") or "Jcode",
+                 "JCODE_HOOK_CWD": session.get("working_dir"),
                  "JCODE_HOOK_LAST_ASSISTANT_TEXT": response[:4000]}
         prompt = formatting.session_prompt(config_path().parent, session_id, response[:4000])
     else:

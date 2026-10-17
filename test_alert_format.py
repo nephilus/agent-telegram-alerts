@@ -36,7 +36,7 @@ class FormattingTests(unittest.TestCase):
         self.assertIn("Result:", result)
         self.assertIn("Checked:", result)
         self.assertIn("Needs you:", result)
-        self.assertNotIn("/home/private", result)
+        self.assertIn("📁 /home/private/sample-project · 1m 35s", result)
         self.assertLessEqual(len(result.split()), 100)
 
     def test_every_profile_has_a_hard_word_and_character_cap(self):
@@ -64,7 +64,7 @@ class FormattingTests(unittest.TestCase):
             "```\nDO_NOT_FORWARD_RAW_LOG secret_value\n```\n"
             "Needs you: review safely."
         )
-        output = fmt.render(event(JCODE_HOOK_LAST_ASSISTANT_TEXT=raw), prompt=f"Use token={token}", secrets=(token,))
+        output = fmt.render(event(JCODE_HOOK_CWD="/workspace/alerts", JCODE_HOOK_LAST_ASSISTANT_TEXT=raw), prompt=f"Use token={token}", secrets=(token,))
         for secret in (token, "private password", api_key, "private.invalid", "/home/private", "DO_NOT_FORWARD_RAW_LOG"):
             self.assertNotIn(secret, output)
         self.assertIn("[redacted]", output)

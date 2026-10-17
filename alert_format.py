@@ -23,7 +23,7 @@ def clip(text, words, chars=1400):
     return text
 
 
-def sanitize(text, secrets=()):
+def sanitize(text, secrets=(), *, redact_paths=True):
     if not isinstance(text, str):
         return ""
     text = text[:16000].encode("utf-8", errors="replace").decode("utf-8")
@@ -47,7 +47,8 @@ def sanitize(text, secrets=()):
     )
     text = re.sub(r"(?:https?|wss?)://[^\s<>]+", "[link]", text, flags=re.I)
     text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email]", text)
-    text = re.sub(r"(?<!\w)(?:~?/|[A-Za-z]:\\)[^\s,;]+", "[path]", text)
+    if redact_paths:
+        text = re.sub(r"(?<!\w)(?:~?/|[A-Za-z]:\\)[^\s,;]+", "[path]", text)
     text = re.sub(r"\[([^\]\n]+)\]\([^\n)]*\)", r"\1", text)
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
@@ -85,6 +86,8 @@ def read_session(home, session_id):
 
 
 def user_request(text):
+    if not isinstance(text, str):
+        return ""
     text = re.sub(r"<(system-reminder|environment_context)[^>]*>.*?(?:</\1>|\Z)", "", text, flags=re.S | re.I)
     text = re.sub(r"^\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*", "", text.strip())
     internal = ("[auto]", "[notification]", "[applet action]", "[swarm", "**background task**",
@@ -146,6 +149,51 @@ def utf16_length(text):
     return len(text.encode("utf-16-le")) // 2
 
 
+def duration_label(milliseconds):
+    """Round native milliseconds to the nearest second, with correct carry."""
+    if type(milliseconds) not in (str, int):
+        return "time unavailable"
+    try:
+        if isinstance(milliseconds, str) and len(milliseconds) > 32:
+            return "time unavailable"
+        value = int(milliseconds)
+        if value > 2**63 - 1:
+            return "time unavailable"
+        total = (max(0, value) + 500) // 1000
+    except (ValueError, TypeError):
+        return "time unavailable"
+    minutes, seconds = divmod(total, 60)
+    return f"{minutes}m {seconds}s"
+
+
+def folder_label(environment, verbosity="expanded", secrets=()):
+    """Display only native CWD metadata, never infer a project or read the disk.
+
+    Preserve ancestry where it fits and the leaf when shortened. Only this
+    explicit metadata field is exempt from generic path redaction.
+    """
+    raw = environment.get("JCODE_HOOK_CWD")
+    if not isinstance(raw, str) or not raw.strip():
+        return "Folder unavailable"
+    text = " ".join(sanitize(raw, secrets, redact_paths=False).split())
+    if not text:
+        return "Folder unavailable"
+    home = str(Path.home()).rstrip("/")
+    if home and (text == home or text.startswith(home + "/")):
+        text = "~" + text[len(home):]
+    text = text.rstrip("/") or "/"
+    limit = {"brief": 64, "contextual": 120, "expanded": 180}[verbosity]
+    if len(text.split()) > 3:
+        text = "…" + " ".join(text.split()[-3:])
+    if len(text) > limit:
+        tail = text[-(limit - 1):]
+        boundary = tail.find("/")
+        if 0 <= boundary < len(tail) - 1:
+            tail = tail[boundary:]
+        text = "…" + tail
+    return text
+
+
 def render_message(environment, verbosity="expanded", prompt="", secrets=()):
     """Return literal text, trusted bold spans, and local context metadata.
 
@@ -153,15 +201,11 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=()):
     Build spans before clipping, then retain complete unchanged spans only.
     """
     profile = PROFILES[verbosity]
-    try:
-        seconds = max(0, int(environment.get("JCODE_HOOK_DURATION_MS", "0"))) / 1000
-    except (TypeError, ValueError):
-        seconds = 0
+    duration = duration_label(environment.get("JCODE_HOOK_DURATION_MS"))
     failed = environment.get("JCODE_HOOK_STATUS") == "error"
     label = "failed" if failed else ("preview" if environment.get("JCODE_HOOK_STATUS") == "preview" else "finished")
     icon = "❌" if failed else ("👀" if label == "preview" else "✅")
-    project = Path(str(environment.get("JCODE_HOOK_CWD", ""))).name or "Jcode"
-    project = clip(" ".join(sanitize(project, secrets).split()), 3, 36) or "Jcode"
+    folder = folder_label(environment, verbosity, secrets)
     chunks, spans, position = [], [], 0
 
     def append(text, bold=False):
@@ -179,14 +223,22 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=()):
 
     append(icon + " ")
     append("Jcode turn " + label, bold=True)
-    append(f"\n{project} · {seconds:.0f}s")
-    request = " ".join(sanitize(user_request(prompt), secrets).split())
-    field("💬", "Asked", clip(request, profile["asked"], profile["asked_chars"]) if request else "Context unavailable for this turn.")
+    append(f"\n📁 {folder} · {duration}")
     response = environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", "")
     if failed:
         response = environment.get("JCODE_HOOK_ERROR") or "Turn failed. No error details available."
     result, checked, next_step = response_parts(response, secrets)
-    field("📝", "Result", clip(result or "No response excerpt available. Open Jcode to review.", profile["result"], profile["result_chars"]))
+    result = clip(result or "No response excerpt available. Open Jcode to review.", profile["result"], profile["result_chars"])
+    request = " ".join(sanitize(user_request(prompt), secrets).split())
+    asked_words, asked_chars = profile["asked"], profile["asked_chars"]
+    if verbosity == "brief":
+        # A longer folder/duration must never push the result out of a brief alert.
+        reserved = "".join(chunks) + "\n\n📝 Result: " + result + "\n\n💬 Asked: "
+        asked_words = min(asked_words, profile["words"] - len(reserved.split()))
+        asked_chars = min(asked_chars, profile["chars"] - len(reserved))
+    if request and asked_words > 0 and asked_chars > 1:
+        field("💬", "Asked", clip(request, asked_words, asked_chars))
+    field("📝", "Result", result)
     if checked and profile["checked"]:
         field("🔎", "Checked", clip(checked, profile["checked"], profile["extra_chars"]))
     if next_step and profile["next"]:
@@ -215,13 +267,13 @@ def render_lifecycle_message(environment, verbosity="expanded", secrets=()):
     if event not in states:
         raise ValueError("Unsupported lifecycle event.")
     icon, heading, state = states[event]
-    project = Path(str(environment.get("JCODE_HOOK_CWD", ""))).name or "Jcode"
-    project = clip(" ".join(sanitize(project, secrets).split()), 3, 36) or "Jcode"
+    folder = folder_label(environment, verbosity, secrets)
     profile = PROFILES[verbosity]
-    original = f"{icon} {heading}\n{project}\n\n📍 State:\n{state}"
+    prefix = f"{icon} {heading}\n📁 {folder}\n\n📍 "
+    original = prefix + f"State:\n{state}"
     text = clip(original, profile["words"], profile["chars"])
     spans = [(len(icon) + 1, len(icon) + 1 + len(heading)),
-             (original.index("State:"), original.index("State:") + len("State:"))]
+             (len(prefix), len(prefix) + len("State:"))]
     entities = [{"type": "bold", "offset": utf16_length(text[:start]),
                  "length": utf16_length(text[start:end])}
                 for start, end in spans if end <= len(text)]

@@ -65,7 +65,7 @@ class TelegramTests(unittest.TestCase):
         event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error", "JCODE_HOOK_DURATION_MS": "1000", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN, "JCODE_HOOK_ERROR": TOKEN, "JCODE_HOOK_CWD": "/private/path"}
         result = app.alert_text(event)
         self.assertNotIn(TOKEN, result)
-        self.assertNotIn("private", result)
+        self.assertIn("📁 /private/path", result)
         event["JCODE_HOOK_EVENT"] = "post_tool"
         self.assertIsNone(app.alert_text(event))
 

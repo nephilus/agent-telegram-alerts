@@ -22,7 +22,7 @@
 Illustrative expanded alert:
 
 > ✅ **Jcode turn finished**<br>
-> example-project · 95s
+> 📁 ~/workspace/example-project · 1m 35s
 >
 > 💬 **Asked:**<br>
 > Make the notification easier to scan.
@@ -45,7 +45,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.2.0"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.2.1"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install
@@ -79,6 +79,18 @@ For a new dedicated bot:
 
 Setup defaults native remote replies to **disabled** and refuses to replace an existing webhook. Do not rerun it casually over an already-linked bot. No tunnel, inbound port, Telegram API application registration, or bot group-admin permission is required.
 
+## Working folder, duration and request context
+
+The `📁` line shows the native session working-folder path rather than guessing a project name from its last component or an arbitrary session name. Your home directory is abbreviated as `~`; long paths are shortened from the left while retaining the leaf. Missing folder metadata is labeled unavailable, never replaced with the observer process's own directory.
+
+This is the session's working folder, **not necessarily the repository a tool last edited**. For example, a session started in one checkout can work on a sibling checkout without changing its native folder. Start Jcode in the intended project if that distinction matters. No repository scanning, tool-output mining or arbitrary-session-name inference is performed.
+
+Durations use minutes and seconds, such as `1m 35s` and `61m 1s`, rounded to the nearest second. Unknown/malformed duration is labeled unavailable.
+
+`Asked` remains useful when a request is safely matched to the successful turn. It is omitted entirely when no usable request context is available, instead of spending space on a context-unavailable placeholder. In brief alerts, the result takes priority over the request excerpt. Request matching is not weakened to fill an empty section. Arbitrary session names are not added to the alert.
+
+**Privacy:** the folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
+
 ## Choose verbosity
 
 ```sh
@@ -90,7 +102,7 @@ jcode-telegram verbosity
 
 | Profile | Whole-alert cap | Content |
 | --- | --- | --- |
-| brief | 25 words / 320 characters | Status, project/duration, short request and result |
+| brief | 25 words / 320 characters | Status, working folder/duration, result and a request excerpt when space permits |
 | contextual | 60 words / 800 characters | More request/result context, stated checks and next action when present |
 | expanded | 100 words / 1,400 characters | Fuller request/result excerpts, stated checks and next action when present |
 
@@ -183,7 +195,7 @@ This project was developed against **Jcode v0.98.1**. In that version, a real `j
 
 The helper reads public text from only the matching saved session, up to 8 MiB. It requires a unique corresponding assistant response before including the request. Missing/ambiguous context is unavailable. Failed turns omit unbound prompt context and use the current error rather than a stale successful response. Reasoning, images, and shell/tool results are not exported as request context.
 
-Code fences, paths, URLs, email addresses, common credential forms, known bot credentials, and labeled secret values are redacted on a **best-effort basis**. This is not comprehensive data-loss prevention and does not make arbitrary private prose safe to forward. Preview before using it with confidential projects.
+Code fences, paths within request/result text, URLs, email addresses, common credential forms, known bot credentials, and labeled secret values are redacted on a **best-effort basis**. The explicit working-folder metadata line is the intentional path-display exception described above. This is not comprehensive data-loss prevention and does not make arbitrary private prose safe to forward. Preview before using it with confidential projects.
 
 Tokens, configuration/backups, preferences, and diagnostic receipts stay outside this repository. Config/backups and helper state files are written with mode 0600. Backups can contain credentials. Never upload them to issues, pull requests, or build artifacts.
 
