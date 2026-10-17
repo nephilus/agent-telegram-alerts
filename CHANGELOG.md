@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.1.0...v0.2.0) (2026-10-17)
+
+
+### Features
+
+* add configurable lifecycle alert delivery ([#4](https://github.com/nephilus/jcode-telegram-alerts/issues/4)) ([fdde593](https://github.com/nephilus/jcode-telegram-alerts/commit/fdde5932f039cc772d2379a6e49848d18b5bae61))
+
 ## 0.1.0 (2026-10-17)
 
 
