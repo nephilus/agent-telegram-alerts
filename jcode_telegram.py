@@ -229,7 +229,8 @@ def alert_message(environment, min_seconds=30, verbosity=None):
             config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""),
             environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", ""),
         )
-    return formatting.render_message(environment, selected_verbosity(verbosity), prompt, alert_secrets())
+    name = formatting.saved_session_name(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
+    return formatting.render_message(environment, selected_verbosity(verbosity), prompt, alert_secrets(), session_name=name)
 
 
 def alert_text(environment, min_seconds=30, verbosity=None):
@@ -240,7 +241,8 @@ def alert_text(environment, min_seconds=30, verbosity=None):
 def event_message(environment, verbosity="expanded"):
     if environment.get("JCODE_HOOK_EVENT") == "turn_end":
         return alert_message(environment, 0, verbosity)
-    return formatting.render_lifecycle_message(environment, verbosity, alert_secrets())
+    name = formatting.saved_session_name(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
+    return formatting.render_lifecycle_message(environment, verbosity, alert_secrets(), session_name=name)
 
 
 def observe_event(environment, min_seconds=30, verbosity="expanded"):
@@ -276,6 +278,7 @@ def observe_event(environment, min_seconds=30, verbosity="expanded"):
 
 
 def preview_message(verbosity, session_id=None, event=None):
+    name = ""
     if event in ("session_start", "turn_start", "session_end"):
         return formatting.render_lifecycle_message({"JCODE_HOOK_EVENT": event,
                                                     "JCODE_HOOK_CWD": "sample-project"},
@@ -297,10 +300,11 @@ def preview_message(verbosity, session_id=None, event=None):
                  "JCODE_HOOK_CWD": session.get("working_dir"),
                  "JCODE_HOOK_LAST_ASSISTANT_TEXT": response[:4000]}
         prompt = formatting.session_prompt(config_path().parent, session_id, response[:4000])
+        name = formatting.saved_session_name(config_path().parent, session_id)
     else:
         event = formatting.sample_event()
         prompt = "Add selectable Telegram alert verbosity, default to expanded, and keep messages concise."
-    return formatting.render_message(event, verbosity, prompt, alert_secrets())
+    return formatting.render_message(event, verbosity, prompt, alert_secrets(), session_name=name)
 
 
 def preview_text(verbosity, session_id=None, event=None):

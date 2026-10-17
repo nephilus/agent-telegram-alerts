@@ -22,6 +22,7 @@
 Illustrative expanded alert:
 
 > ✅ **Jcode turn finished**<br>
+> 🏷 **Session:** Storage migration<br>
 > 📁 ~/workspace/example-project · 1m 35s
 >
 > 💬 **Asked:**<br>
@@ -45,7 +46,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.2.1"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.3.0"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install
@@ -87,7 +88,20 @@ This is the session's working folder, **not necessarily the repository a tool la
 
 Durations use minutes and seconds, such as `1m 35s` and `61m 1s`, rounded to the nearest second. Unknown/malformed duration is labeled unavailable.
 
-`Asked` remains useful when a request is safely matched to the successful turn. It is omitted entirely when no usable request context is available, instead of spending space on a context-unavailable placeholder. In brief alerts, the result takes priority over the request excerpt. Request matching is not weakened to fill an empty section. Arbitrary session names are not added to the alert.
+`Asked` remains useful when a request is safely matched to the successful turn. It is omitted entirely when no usable request context is available, instead of spending space on a context-unavailable placeholder. In brief alerts, the result takes priority over the request excerpt. Request matching is not weakened to fill an empty section.
+
+### Meaningful saved session names
+
+If you explicitly rename a session or save it with a name, an optional `🏷 Session: Storage migration` line appears above the folder in qualifying completion/error alerts, enabled lifecycle alerts and saved-session previews. The helper follows Jcode's explicit-name precedence: `custom_title`, then `save_label` only when `saved` is true. Automatic generated summaries, animal names and raw session IDs are not used as fallbacks. Missing/unreadable metadata adds no placeholder.
+
+Rename through Jcode's normal interface or its native CLI, then preview without sending:
+
+```sh
+jcode session rename SESSION_ID "Storage migration"
+jcode-telegram preview --session SESSION_ID
+```
+
+Names are read again for each rendered alert, so subsequent renames need no helper restart. The line stays single-line and is redacted before shortening: brief allows 2 words / 40 characters, contextual 5 / 80, expanded 8 / 120, within the existing whole-alert caps. Paths in names remain redacted, unlike the intentional folder metadata exception. A meaningful name supplements the working folder, not replaces it. Avoid confidential names because this metadata is forwarded to your configured Telegram destination.
 
 **Privacy:** the folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
 

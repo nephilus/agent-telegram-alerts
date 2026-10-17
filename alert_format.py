@@ -85,6 +85,18 @@ def read_session(home, session_id):
         return {}
 
 
+def saved_session_name(home, session_id):
+    """Follow native explicit-name precedence, never the generated title/name."""
+    session = read_session(home, session_id)
+    title = session.get("custom_title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    label = session.get("save_label")
+    if session.get("saved") is True and isinstance(label, str):
+        return label.strip()
+    return ""
+
+
 def user_request(text):
     if not isinstance(text, str):
         return ""
@@ -194,7 +206,13 @@ def folder_label(environment, verbosity="expanded", secrets=()):
     return text
 
 
-def render_message(environment, verbosity="expanded", prompt="", secrets=()):
+def session_label(name, verbosity="expanded", secrets=()):
+    """Keep explicit names single-line and body-redacted before shortening."""
+    words, chars = {"brief": (2, 40), "contextual": (5, 80), "expanded": (8, 120)}[verbosity]
+    return clip(" ".join(sanitize(name, secrets).split()), words, chars)
+
+
+def render_message(environment, verbosity="expanded", prompt="", secrets=(), *, session_name=""):
     """Return literal text, trusted bold spans, and local context metadata.
 
     No parse_mode: user text can never introduce HTML or Markdown entities.
@@ -223,6 +241,11 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=()):
 
     append(icon + " ")
     append("Jcode turn " + label, bold=True)
+    name = session_label(session_name, verbosity, secrets)
+    if name:
+        append("\n🏷 ")
+        append("Session:", bold=True)
+        append(" " + name)
     append(f"\n📁 {folder} · {duration}")
     response = environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", "")
     if failed:
@@ -252,11 +275,11 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=()):
     return {"text": text, "entities": entities, "prompt_available": bool(request)}
 
 
-def render(environment, verbosity="expanded", prompt="", secrets=()):
-    return render_message(environment, verbosity, prompt, secrets)["text"]
+def render(environment, verbosity="expanded", prompt="", secrets=(), *, session_name=""):
+    return render_message(environment, verbosity, prompt, secrets, session_name=session_name)["text"]
 
 
-def render_lifecycle_message(environment, verbosity="expanded", secrets=()):
+def render_lifecycle_message(environment, verbosity="expanded", secrets=(), *, session_name=""):
     """Render only lifecycle metadata, never an earlier turn's prompt or response."""
     states = {
         "session_start": ("▶️", "Jcode session active", "Session opened, attached, or resumed."),
@@ -269,11 +292,17 @@ def render_lifecycle_message(environment, verbosity="expanded", secrets=()):
     icon, heading, state = states[event]
     folder = folder_label(environment, verbosity, secrets)
     profile = PROFILES[verbosity]
-    prefix = f"{icon} {heading}\n📁 {folder}\n\n📍 "
-    original = prefix + f"State:\n{state}"
+    original = f"{icon} {heading}"
+    spans = [(len(icon) + 1, len(original))]
+    name = session_label(session_name, verbosity, secrets)
+    if name:
+        original += "\n🏷 "
+        spans.append((len(original), len(original) + len("Session:")))
+        original += "Session: " + name
+    original += f"\n📁 {folder}\n\n📍 "
+    spans.append((len(original), len(original) + len("State:")))
+    original += f"State:\n{state}"
     text = clip(original, profile["words"], profile["chars"])
-    spans = [(len(icon) + 1, len(icon) + 1 + len(heading)),
-             (len(prefix), len(prefix) + len("State:"))]
     entities = [{"type": "bold", "offset": utf16_length(text[:start]),
                  "length": utf16_length(text[start:end])}
                 for start, end in spans if end <= len(text)]
