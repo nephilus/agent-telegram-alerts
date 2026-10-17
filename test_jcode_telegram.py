@@ -1,0 +1,147 @@
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+import tomllib
+import unittest
+from unittest.mock import patch
+import urllib.error
+
+import jcode_telegram as app
+
+TOKEN = "123456:" + "a" * 35
+
+
+class TelegramTests(unittest.TestCase):
+    def test_preserves_unrelated_settings_and_existing_hooks(self):
+        text = '# comment\n[hooks]\nturn_end = ["moshi", "other"]\n[safety]\ntelegram_enabled = false\ndesktop_notifications = true\n[provider]\nmodel = "existing"\n'
+        result = app.update_safety(text, {"telegram_enabled": True, "telegram_bot_token": TOKEN, "telegram_chat_id": "42", "telegram_reply_enabled": False})
+        old, new = tomllib.loads(text), tomllib.loads(result)
+        self.assertEqual(old["hooks"], new["hooks"])
+        self.assertEqual(old["provider"], new["provider"])
+        self.assertTrue(new["safety"]["desktop_notifications"])
+        self.assertFalse(new["safety"]["telegram_reply_enabled"])
+        self.assertTrue(result.startswith("# comment"))
+
+    def test_adds_missing_safety_section_and_is_idempotent(self):
+        changes = {"telegram_enabled": True, "telegram_bot_token": TOKEN}
+        result = app.update_safety('[provider]\nmodel = "keep"\n', changes)
+        self.assertEqual(app.update_safety(result, changes), result)
+        self.assertEqual(tomllib.loads(result)["provider"]["model"], "keep")
+        self.assertTrue(tomllib.loads(app.update_safety("", changes))["safety"]["telegram_enabled"])
+
+    def test_config_and_backup_are_private(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}):
+            path = Path(directory) / "config.toml"
+            path.write_text('[safety]\ntelegram_enabled = false\n')
+            app.save_safety({"telegram_enabled": True, "telegram_bot_token": TOKEN})
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            backups = list(Path(directory).glob("config.toml.telegram-backup-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+            self.assertFalse(tomllib.loads(backups[0].read_text())["safety"]["telegram_enabled"])
+
+    def test_rejects_config_symlink(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}):
+            target = Path(directory) / "real.toml"
+            target.write_text("")
+            (Path(directory) / "config.toml").symlink_to(target)
+            with self.assertRaises(app.SetupError):
+                app.save_safety({"telegram_enabled": True})
+            self.assertEqual(target.read_text(), "")
+
+    def test_short_success_filtered_boundary_and_failure_allowed(self):
+        event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "ok", "JCODE_HOOK_DURATION_MS": "29999"}
+        self.assertIsNone(app.alert_text(event))
+        event["JCODE_HOOK_DURATION_MS"] = "30000"
+        self.assertIn("finished", app.alert_text(event))
+        event.update(JCODE_HOOK_STATUS="error", JCODE_HOOK_DURATION_MS="0")
+        self.assertIn("failed", app.alert_text(event))
+        event["JCODE_HOOK_DURATION_MS"] = "bad"
+        self.assertIn("failed", app.alert_text(event))
+
+    def test_no_sensitive_event_contents_are_forwarded(self):
+        event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error", "JCODE_HOOK_DURATION_MS": "1000", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN, "JCODE_HOOK_ERROR": TOKEN, "JCODE_HOOK_CWD": "/private/path"}
+        result = app.alert_text(event)
+        self.assertNotIn(TOKEN, result)
+        self.assertNotIn("private", result)
+        event["JCODE_HOOK_EVENT"] = "post_tool"
+        self.assertIsNone(app.alert_text(event))
+
+    def test_http_failure_never_exposes_token(self):
+        error = urllib.error.HTTPError(f"https://api.telegram.org/bot{TOKEN}/getMe", 401, "Unauthorized", {}, None)
+        with patch.object(app.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(app.SetupError) as caught:
+                app.api(TOKEN, "getMe")
+        self.assertNotIn(TOKEN, str(caught.exception))
+        self.assertIn("401", str(caught.exception))
+
+    def test_api_uses_https_json_and_timeout(self):
+        with patch.object(app.urllib.request, "urlopen") as request:
+            request.return_value.__enter__.return_value = io.StringIO('{"ok":true,"result":{"id":42}}')
+            self.assertEqual(app.api(TOKEN, "getMe"), {"id": 42})
+            sent = request.call_args.args[0]
+            self.assertTrue(sent.full_url.startswith("https://api.telegram.org/"))
+            self.assertEqual(json.loads(sent.data), {})
+            self.assertEqual(request.call_args.kwargs["timeout"], 15)
+
+    def test_setup_refuses_non_terminal_token_entry(self):
+        with patch.object(app.sys.stdin, "isatty", return_value=False), patch.object(app.getpass, "getpass") as prompt:
+            with self.assertRaises(app.SetupError):
+                app.setup()
+            prompt.assert_not_called()
+
+    def test_setup_refuses_existing_webhook_without_mutation(self):
+        with patch.object(app.sys.stdin, "isatty", return_value=True), patch.object(app.getpass, "getpass", return_value=TOKEN), patch.object(app, "api", side_effect=[{"username": "test_bot"}, {"url": "https://existing.invalid"}]), patch.object(app, "save_safety") as save, patch("sys.stdout", new_callable=io.StringIO):
+            with self.assertRaises(app.SetupError):
+                app.setup()
+            save.assert_not_called()
+
+    def test_setup_verifies_private_challenge_and_test_before_save(self):
+        challenge = "/start jcode_fixedchallenge"
+        def update(number, kind, text, who=42):
+            return {"update_id": number, "message": {"text": text, "chat": {"id": 42, "type": kind}, "from": {"id": who}}}
+        updates = [update(1, "private", "/start"), update(2, "group", challenge), update(3, "private", challenge, 99), update(4, "private", challenge)]
+        calls = []
+        def fake_api(token, method, values=None, timeout=15):
+            calls.append(method)
+            return {"getMe": {"username": "test_bot"}, "getWebhookInfo": {"url": ""}, "getUpdates": updates, "sendMessage": {"message_id": 1}}[method]
+        def save(changes):
+            self.assertEqual(calls[-1], "sendMessage")
+            self.assertEqual(changes["telegram_chat_id"], "42")
+            self.assertFalse(changes["telegram_reply_enabled"])
+        with patch.object(app.sys.stdin, "isatty", return_value=True), patch.object(app.getpass, "getpass", return_value=TOKEN), patch.object(app.secrets, "token_hex", return_value="fixedchallenge"), patch.object(app, "api", side_effect=fake_api), patch.object(app, "save_safety", side_effect=save) as saved, patch("sys.stdout", new_callable=io.StringIO):
+            app.setup()
+            saved.assert_called_once()
+
+    def test_failed_delivery_never_enables_channel(self):
+        update = {"update_id": 1, "message": {"text": "/start jcode_fixed", "chat": {"id": 42, "type": "private"}, "from": {"id": 42}}}
+        with patch.object(app.sys.stdin, "isatty", return_value=True), patch.object(app.getpass, "getpass", return_value=TOKEN), patch.object(app.secrets, "token_hex", return_value="fixed"), patch.object(app, "api", side_effect=[{"username": "test_bot"}, {"url": ""}, [update], app.SetupError("send failed")]), patch.object(app, "save_safety") as save, patch("sys.stdout", new_callable=io.StringIO):
+            with self.assertRaises(app.SetupError):
+                app.setup()
+            save.assert_not_called()
+
+    def test_missing_credentials_do_not_send_alert(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory, "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error"}), patch.object(app.sys, "argv", ["jcode-telegram", "alert"]), patch.object(app, "api") as send:
+            app.main()
+            send.assert_not_called()
+            receipt = json.loads(app.receipt_path().read_text())
+            self.assertEqual(receipt["state"], "pending_setup")
+            self.assertEqual(app.receipt_path().stat().st_mode & 0o777, 0o600)
+
+    def test_receipt_does_not_store_raw_session_or_contents(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory, "JCODE_HOOK_SESSION_ID": "private-session-id", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN}):
+            app.record_receipt("suppressed_short_or_unknown_turn")
+            text = app.receipt_path().read_text()
+            self.assertNotIn("private-session-id", text)
+            self.assertNotIn(TOKEN, text)
+            self.assertEqual(len(json.loads(text)["session_fingerprint"]), 16)
+
+    def test_receipt_failure_does_not_disrupt_hook(self):
+        with patch.object(app, "private_write", side_effect=OSError("read only")):
+            app.record_receipt("pending_setup")
+
+
+if __name__ == "__main__":
+    unittest.main()

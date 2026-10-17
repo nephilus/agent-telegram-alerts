@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jcode-telegram-alerts"
+dynamic = ["version"]
+description = "Unofficial readable Telegram completion alerts for Jcode"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Jcode Telegram Alerts contributors"}]
+keywords = ["jcode", "telegram", "notifications"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/nephilus/jcode-telegram-alerts"
+Issues = "https://github.com/nephilus/jcode-telegram-alerts/issues"
+Security = "https://github.com/nephilus/jcode-telegram-alerts/security/policy"
+Changelog = "https://github.com/nephilus/jcode-telegram-alerts/blob/main/CHANGELOG.md"
+
+[project.scripts]
+jcode-telegram = "jcode_telegram:cli"
+jcode-telegram-hook = "hook_install:cli"
+
+[tool.setuptools]
+py-modules = ["jcode_telegram", "alert_format", "hook_install"]
+
+[tool.setuptools.dynamic]
+version = {file = ["version.txt"]}
