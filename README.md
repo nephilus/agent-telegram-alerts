@@ -53,6 +53,8 @@ Alternatively, download the wheel and `SHA256SUMS` from a [GitHub release](https
 
 Keep the virtual environment at its installed location: the hook records the executable's absolute path. It does not depend on an interactive shell's PATH or an activated environment after registration. Use `jcode-telegram-hook --help` for an explicit executable path or a custom successful-turn threshold. Do not move/delete the environment before unregistering the hook.
 
+Migrating from a manually registered or prototype hook requires removing that old hook first. The installer refuses to adopt an unowned hook or add a duplicate Telegram alert hook. Review the old command in Jcode's configuration, remove only that command, then install this hook. Existing native Telegram credentials do not need to be replaced.
+
 ### Set up Telegram
 
 If Jcode already has a working Telegram channel, skip setup. This helper reuses that channel's native credentials. Avoid running a second `getUpdates` poller beside Jcode's native reply poller.
@@ -122,7 +124,7 @@ The latest receipt at `~/.jcode/notifications/telegram-last-alert.json` stores s
 
 ## Update and remove
 
-Before upgrading, check the release notes, then install a chosen tag or verified release wheel into the same environment. Re-register only if the executable path or threshold changes.
+Before upgrading, check the release notes, then install a chosen tag or verified release wheel into the same environment. No hook change is needed if its executable path and threshold stay the same. To change either, uninstall the registered hook first, then install it with the new options.
 
 ```sh
 jcode-telegram-hook status
