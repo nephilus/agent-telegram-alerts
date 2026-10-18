@@ -19,6 +19,7 @@ import stat
 import time
 
 from alert_format import PROFILES, clip, formatting_confirmed, utf16_length
+from alert_links import safe_url
 
 EVENTS = ('session_start', 'turn_start', 'completion', 'error', 'session_end')
 PRESETS = {
@@ -297,6 +298,15 @@ def _message(rendered, verbosity, grouped):
     profile = PROFILES[verbosity]
     suffix = f'\n\nGrouped: {grouped} earlier completions.' if grouped else ''
     original = rendered['text']
+    supplied = rendered.get('entities', [])
+    has_links = isinstance(supplied, list) and any(
+        isinstance(e, dict) and e.get('type') == 'text_link' and isinstance(e.get('url'), str)
+        and safe_url(e['url']) == e['url'] for e in supplied[:100])
+    if has_links and (len(original + suffix) > profile['chars']
+                      or len((original + suffix).split()) > profile['words']):
+        # Useful links take precedence over the optional grouping footer. Do
+        # not cut their labels just to repeat an already-recorded counter.
+        suffix = ''
     text = clip(original, profile['words'] - len(suffix.split()), profile['chars'] - len(suffix))
     # clip appends an ellipsis. Only original, unchanged code points may retain
     # trusted spans, and neither endpoint may bisect a UTF-16 surrogate pair.
@@ -313,11 +323,20 @@ def _message(rendered, verbosity, grouped):
     entities = rendered.get('entities', [])
     if not isinstance(entities, list):
         entities = []
-    entities = [dict(e) for e in entities[:100] if isinstance(e, dict) and set(e) == {'type', 'offset', 'length'}
-                and e['type'] == 'bold' and type(e['offset']) is int and type(e['length']) is int
-                and e['length'] > 0 and e['offset'] in boundaries
-                and e['offset'] + e['length'] in boundaries]
-    return {'text': text + suffix, 'entities': entities}
+    valid = []
+    for entity in entities[:100]:
+        if not isinstance(entity, dict) or entity.get('type') not in ('bold', 'text_link'):
+            continue
+        expected = {'type', 'offset', 'length', 'url'} if entity['type'] == 'text_link' else {'type', 'offset', 'length'}
+        if (set(entity) != expected or type(entity['offset']) is not int or type(entity['length']) is not int
+                or entity['length'] <= 0 or entity['offset'] not in boundaries
+                or entity['offset'] + entity['length'] not in boundaries):
+            continue
+        if entity['type'] == 'text_link' and (not isinstance(entity['url'], str)
+                                             or safe_url(entity['url']) != entity['url']):
+            continue
+        valid.append(dict(entity))
+    return {'text': text + suffix, 'entities': valid, 'link_preview_options': {'is_disabled': True}}
 
 
 def notify(home, environment, render, deliver, destination_fingerprint,
@@ -399,7 +418,9 @@ def notify(home, environment, render, deliver, destination_fingerprint,
                 receipt['prompt_available'] = rendered.get('prompt_available') is True
                 receipt['method'] = method
                 receipt.update(words=len(message['text'].split()), characters=len(message['text']),
-                               bold_entities=len(message['entities']), text_fingerprint=_hash(message['text']))
+                               bold_entities=sum(e['type'] == 'bold' for e in message['entities']),
+                               link_entities=sum(e['type'] == 'text_link' for e in message['entities']),
+                               text_fingerprint=_hash(message['text']))
                 body = copy.deepcopy(message)
                 if method == 'editMessageText':
                     body['message_id'] = matching_card['message_id']

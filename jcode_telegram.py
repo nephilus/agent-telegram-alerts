@@ -323,7 +323,7 @@ def record_receipt(state, **metadata):
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "recorded_at_ns": time.time_ns(),
             "session_fingerprint": hashlib.sha256(os.environ.get("JCODE_HOOK_SESSION_ID", "").encode()).hexdigest()[:16],
-            **{key: metadata[key] for key in ("kind", "grouped", "method", "verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "formatting_confirmed") if key in metadata},
+            **{key: metadata[key] for key in ("kind", "grouped", "method", "verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "link_entities", "formatting_confirmed") if key in metadata},
         }) + "\n"
         kind = metadata.get("kind")
         if kind in ("session_start", "turn_start", "completion", "error", "session_end"):
@@ -443,7 +443,8 @@ def main():
     elif args.command == "test":
         token, chat = credentials()
         message = formatting.prepend_message(preview_message(level), "Telegram verbosity preview (illustrative, not a real task result):\n\n")
-        api(token, "sendMessage", {"chat_id": chat, "text": message["text"], "entities": message["entities"]})
+        api(token, "sendMessage", {"chat_id": chat, "text": message["text"], "entities": message["entities"],
+                                   "link_preview_options": {"is_disabled": True}})
         print("Test preview delivered to Telegram (" + level + ").")
     elif args.command == "disable":
         save_safety({"telegram_enabled": False, "telegram_reply_enabled": False})
