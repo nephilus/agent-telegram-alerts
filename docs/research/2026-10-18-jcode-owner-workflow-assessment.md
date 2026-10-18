@@ -8,7 +8,7 @@
 
 **Keep Jcode's base prompt. Add a lean preference overlay, retain operational skills on demand, and make Telegram the attention channel, not the approval engine.**
 
-1. Put the everyday nuances of ponytail, selective clarification and repo-based presentation into one short overlay. Do not paste entire skills into it.
+1. Put the everyday nuances of ponytail, selective clarification and repo-based presentation into one short overlay. Make "make it right" the minimum quality bar, not unconditional reuse or the fewest edits. Do not paste entire skills into it.
 2. Keep deep grilling opt-in. Keep headless authentication and Plannotator procedures separate. Move habitual PR formatting into repository templates/conventions where practical.
 3. Keep plans, research and ADRs as repo Markdown and present them for review through Plannotator over Tailscale. Use GitHub for durable artifacts and PR approval, not as a substitute for document review. Stop opening side panels unless requested.
 4. Keep the demonstrated per-document review path. Fix the narrow Telegram URL compatibility gap before expanding into an asynchronous Inbox or deleting existing skills.
@@ -18,11 +18,12 @@ No core patch, new summarizer, generic Telegram command router or mandatory inte
 
 ### Owner review incorporated
 
-The first real tailnet review returned `approved` with three notes. This revision makes their effect explicit:
+The first real tailnet review returned `approved` with three notes. The second returned `annotated` with two further corrections, not approval. This revision incorporates both rounds:
 
 1. **Document review:** plans, research and ADRs are Markdown in the owning repo and are presented through Plannotator over Tailscale, including the Proposed ADR itself.
-2. **Placement:** the short standing rules belong in the global `~/.jcode/prompt-overlay.md`. Repository conventions stay in that repo's `AGENTS.md`. One small on-demand `owner-review` skill holds the mechanical publishing/result-handling procedure. These are proposed destinations, not files installed by this assessment.
-3. **Small decisions:** the candidate overlay now explicitly triggers Plannotator question cards for genuine owner-dependent choices, with context, options, recommendation/reason and comments. Ordinary factual uncertainty and reversible implementation defaults still do not trigger a question.
+2. **Placement and one standard:** the quality bar and common document paths belong in the global `~/.jcode/prompt-overlay.md`, applying across repos. Repo `AGENTS.md` can describe project facts and commands, not choose a different docs layout. One small on-demand `owner-review` skill holds the publishing/result-handling procedure. These are proposed destinations, not files installed by this assessment.
+3. **Small decisions:** the candidate overlay explicitly triggers Plannotator question cards for genuine owner-dependent choices, with context, options, recommendation/reason and comments. Ordinary factual uncertainty and reversible implementation defaults still do not trigger a question.
+4. **Quality before convenience:** work that merely runs is not done. Reuse must meet the correctness, maintainability and integration bar; unsuitable existing code may need repair or replacement within the task. Avoid speculative extras, not necessary rework.
 
 The comments are incorporated without treating approval of the assessment as permission to apply its proposals.
 
@@ -30,7 +31,7 @@ The comments are incorporated without treating approval of the assessment as per
 
 ### Autonomy and presentation
 
-The small base prompt already favors autonomous completion, sparse blocking questions and caution around irreversible actions. Ponytail's useful addition is mainly the **smallest complete solution**, reuse and avoidance of speculative machinery, not another instruction to be proactive. [base]
+The small base prompt already favors autonomous completion, sparse blocking questions and caution around irreversible actions. Keep ponytail's avoidance of speculative machinery, but qualify its reuse/small-change preference: the smallest acceptable unit is a solution that is right, not just one that runs or disturbs the fewest lines. Reuse is conditional on suitability; correcting or replacing an unsuitable foundation can be the pragmatic choice. [base]
 
 There is **no side-panel preference in the base prompt** at this commit. Panel behavior is described in `crates/jcode-app-core/src/tool/panel.rs:37-51`; the legacy `side_panel` tool merely prefers the newer `panel` API. Earlier use of panels was an agent presentation choice, not a base-prompt requirement. A preference such as “do not open side panels unless I ask” is sufficient to steer normal behavior. For a stricter per-run boundary, the installed CLI supports `--disabled-tools panel,side_panel`; this hides agent tools, not the client widget itself. [panel] [legacy-panel]
 
@@ -62,7 +63,7 @@ These are recommendations, not changes already made.
 
 | Item | Pragmatic treatment |
 | --- | --- |
-| **Ponytail** | Extract the few everyday principles into the overlay. Trial them, then archive the personal skill if its explicit lite/full/ultra modes are no longer useful. |
+| **Ponytail** | Extract its anti-overengineering principle, but make correctness, maintainability and integration the minimum. Reuse only suitable code; allow task-necessary repair/replacement. Trial this before archiving the personal skill or its explicit modes. |
 | **Headless-links** | Retain for authentication/device-code workflows, with their real URL, expiry, browser and ambiguous-result safety rules. Do not treat it as a Telegram delivery mechanism. |
 | **PR skill** | Put the habitual summary/evidence/risk contract in each repo's existing PR template/conventions. Keep the visual-rich skill optional, or archive it after equivalent coverage exists. Do not copy its complete template globally. |
 | **Grill-me / grilling** | Retain as an explicit design stress-test. Do not globally import the requirement to interview through every decision branch before acting. Extract only investigate-first, material questions, meaningful options and a recommendation. |
@@ -73,11 +74,11 @@ Local inspected bodies were 592 words for ponytail, 1,045 for headless-links, 56
 ### Candidate overlay, not installed
 
 ```text
-Prefer the smallest complete solution that fits the existing code and conventions. Reuse what exists; avoid speculative features, abstractions and dependencies. Verify the result, and state material limits.
+Make it right is the minimum: deliver correct, maintainable, well-integrated work, not merely something that runs. Reuse existing code only when suitable; repair or replace it when the task needs that. Prefer the smallest coherent solution that meets this bar, not the fewest edits or path of least resistance. Avoid speculative features and abstractions. Verify the result and state material limits.
 
 Resolve factual uncertainty by investigation. Choose sensible reversible implementation defaults and continue. Ask only when material intent, authority, scope or consequences remain unresolved. Give brief context, meaningful options when useful, and a recommendation with why. Continue independently authorized work.
 
-Keep plans, research and ADRs as Markdown in the owning repo and present them for review through Plannotator over Tailscale. Follow existing repo conventions; do not manufacture documents for routine work. Do not open side panels unless asked. GitHub holds durable artifacts and PR decisions. Keep chat concise.
+Use docs/plans/YYYY-MM-DD-topic.md, docs/research/YYYY-MM-DD-topic.md and docs/adrs/NNNN-topic.md consistently across repos. Present plans, research and ADRs for review through Plannotator over Tailscale. Do not manufacture documents for routine work or open side panels unless asked. GitHub holds durable artifacts and PR decisions. Keep chat concise.
 
 When a small decision genuinely needs the owner, use a Plannotator question card with brief context, meaningful choices or Yes/No, a recommendation with why, and room for comments. Do not turn ordinary uncertainty into an interview. Keep doing independently authorized work while feedback is pending.
 
@@ -90,8 +91,8 @@ This would **replace and streamline** the current attention block after agreemen
 
 | Layer | Proposed home | Responsibility |
 | --- | --- | --- |
-| Always-on owner preferences | Global `~/.jcode/prompt-overlay.md` | Smallest complete solution, autonomy/ask threshold, repo Markdown, no unsolicited panels, Plannotator review for plans/research/ADRs, question-card trigger and attention requirement. |
-| Project-specific convention | The owning repo's existing `AGENTS.md` | Existing `docs/adr/` versus `docs/adrs/`, numbering, PR template and any project-specific review authority. Do not duplicate the entire global policy in every repo. |
+| Always-on owner preferences and standards | Global `~/.jcode/prompt-overlay.md` | Make-it-right minimum, conditional reuse, autonomy/ask threshold, one cross-repo docs layout/naming standard, no unsolicited panels, Plannotator document review, question-card trigger and attention requirement. |
+| Project facts, not alternate standards | The owning repo's existing `AGENTS.md` | Project architecture, build/test commands and actual authority boundaries. The shared docs layout is not delegated here or copied into divergent per-repo rules. |
 | On-demand mechanics | `~/.jcode/skills/owner-review/SKILL.md` | A short procedure for one exact document/revision, native Tailscale publication, question-card syntax, verified URL, attention delivery outcome, private receipt and scoped feedback/cleanup. Reuse the installed Plannotator reference for uncommon flags. |
 | Durable work | Repo Markdown and Git commits | The plan, research, ADR or question context being reviewed, not a replacement for the always-on instructions. |
 
@@ -101,18 +102,18 @@ This would **replace and streamline** the current attention block after agreemen
 
 Do not change compaction to compensate for a missing trigger. Test adoption with two ordinary native tasks: a reversible implementation that finishes without asking, and a genuinely owner-only choice that opens a context/options/recommendation card. A document review is mandatory presentation, not necessarily a work-stopping approval gate. Pause only work dependent on an unresolved owner decision. Approved-with-notes feedback is guidance, not an automatic requirement for another approval round.
 
-### Repository structure
+### One repository structure, set globally
 
-Follow an existing convention first. Where none exists, create only directories actually needed:
+Use this shared layout and naming convention across repos, with the rule in the global overlay rather than repo-specific `AGENTS.md`. Create only directories actually needed:
 
 ```text
 docs/
   plans/YYYY-MM-DD-topic.md
   research/YYYY-MM-DD-topic.md
-  adrs/NNNN-decision.md
+  adrs/NNNN-topic.md
 ```
 
-This repository already uses `docs/adr/`, so keep that singular spelling rather than renaming it for aesthetics. A small reversible change does not need a plan, research note and ADR. Significant decisions get a Proposed ADR with context, options, recommendation, consequences and the exact scope needing approval.
+This repository currently has `docs/adr/`; that is an existing mismatch to migrate when adoption is authorized, not a permanent exception to the global standard. Check/update references and preserve durable published links when planning that migration; do not silently move old files during this assessment. New target artifacts use `docs/adrs/`. A small reversible change does not need a plan, research note and ADR. Significant decisions get a Proposed ADR with context, options, recommendation, consequences and the exact scope needing approval.
 
 ## 3. The smallest useful owner-review loop
 
@@ -124,7 +125,7 @@ This repository already uses `docs/adr/`, so keep that singular spelling rather 
 2. Start one background-hosted invocation of the installed CLI, suppressing automatic browser launch:
 
 ```sh
-PLANNOTATOR_BROWSER=none plannotator annotate docs/adr/NNNN-decision.md \
+PLANNOTATOR_BROWSER=none plannotator annotate docs/adrs/NNNN-topic.md \
   --tailscale --gate --json --require-approval \
   --result-file /existing/private/directory/NEW-result.json
 ```
@@ -188,7 +189,7 @@ Inbox is worthwhile if holding a per-document gate open becomes inconvenient. It
 
 | Stage | Change | Acceptance before expanding |
 | --- | --- | --- |
-| **A. Preferences** | One lean overlay, repo Markdown, no unsolicited panels. Leave compaction and skills installed. | A normal task proceeds without unnecessary questions. A genuinely material ambiguity gets context/options/recommendation. An existing session observes the intended overlay. |
+| **A. Standards and preferences** | One lean overlay: make-it-right minimum, conditional reuse, global docs layout, no unsolicited panels. Leave compaction and skills installed during the trial. | A task meets correctness/integration checks, including necessary rework, without needless questions. A genuinely owner-dependent choice gets context/options/recommendation. The same global docs paths apply in two different repos without per-repo policy copies. |
 | **B. Linked reviews and cards** | Reuse Plannotator CLI/question blocks and make the narrow explicit-attention URL fix. | Document review, result correlation and owned mapping cleanup are demonstrated. Still test the exact Telegram link and a returned small-decision answer, plus stale-revision/failed-publication refusal. Keep the host alive during review. |
 | **C. Consolidate** | Archive duplicate personal skills after checking effective registry/fresh-session behavior. Add Inbox MCP only if asynchronous questions are actually needed. | Explicit thread/session correlation, timeout behavior and stopped/resumed-session handling are demonstrated, not inferred. |
 
