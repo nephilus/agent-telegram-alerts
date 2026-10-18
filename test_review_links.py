@@ -1,5 +1,6 @@
 """Offline adversarial tests for the attention-only review exception."""
 import contextlib
+import copy
 from concurrent.futures import ThreadPoolExecutor
 import fcntl
 import io
@@ -62,11 +63,73 @@ class ReviewLinksTests(unittest.TestCase):
             body = self.render()
             self.assertIn(self.host + ':' + str(self.port), body['text'])
             self.assertEqual([e['url'] for e in body['entities'] if e['type'] == 'text_link'],
-                             [self.request['links'][0]['url'], 'https://github.com/org/repo/pull/1'])
+                             [self.url, 'https://github.com/org/repo/pull/1'])
         for port in (1024, 65535):
             self.port = port
             self.request['links'][0]['url'] = f'https://{self.host}:{port}'
             self.render()
+
+    def test_slashless_and_root_review_urls_render_identically(self):
+        self.configure()
+        root = self.render()
+        self.request['links'][0]['url'] = self.url.rstrip('/')
+        self.assertEqual(self.render(), root)
+
+    def test_simulated_telegram_root_normalization_confirms_both_inputs(self):
+        self.configure()
+        sent_urls = []
+
+        def deliver(method, body):
+            response = {'message_id': 1, **copy.deepcopy(body)}
+            for entity in response['entities']:
+                if entity['type'] == 'text_link':
+                    sent_urls.append(entity['url'])
+                    entity['url'] = entity['url'].rstrip('/') + '/'
+            return response
+
+        for suffix in ('', '/'):
+            self.request['links'][0]['url'] = self.url.rstrip('/') + suffix
+            result = attention.publish(self.home, self.env, self.request,
+                                       'review' + suffix, deliver, 'a' * 64,
+                                       review_port=self.port)
+            self.assertEqual(result['state'], 'sent')
+            self.assertTrue(result['formatting_confirmed'])
+        self.assertEqual(sent_urls, [self.url, self.url])
+
+    def test_changed_telegram_host_port_or_path_is_not_confirmed(self):
+        self.configure()
+        for changed in (self.url.replace(self.host, 'other.tailnet.ts.net'),
+                        self.url.replace(':19433', ':19434'), self.url + 'changed',
+                        self.url.rstrip('/')):
+            def deliver(method, body):
+                response = {'message_id': 1, **copy.deepcopy(body)}
+                for entity in response['entities']:
+                    if entity['type'] == 'text_link':
+                        entity['url'] = changed
+                return response
+
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                    attention.AttentionError, 'not confirmed'):
+                attention.publish(self.home, self.env, self.request, 'review',
+                                  deliver, 'a' * 64, review_port=self.port)
+            self.assertFalse((self.home / 'notifications' / attention.STATE_FILE).exists())
+
+    def test_canonical_only_port_slash_secret_rejects_before_transport_or_state(self):
+        self.configure()
+        self.port = 43929
+        raw = f'https://{self.host}:{self.port}'
+        secret = ':43929/'
+        self.assertNotIn(secret, raw)
+        self.request['links'][0]['url'] = raw
+        for value in (raw, raw + '/'):
+            self.request['links'][0]['url'] = value
+            with self.subTest(value=value), \
+                    patch.object(policy, '_locked', side_effect=AssertionError('lock called')), \
+                    self.assertRaises(attention.AttentionError):
+                attention.publish(self.home, self.env, self.request, 'review',
+                                  lambda *_: self.fail('transport called'), 'a' * 64,
+                                  review_port=self.port, secrets=(secret,))
+        self.assertFalse((self.home / 'notifications' / attention.STATE_FILE).exists())
 
     def test_routine_policy_and_undeclared_attention_stay_strict(self):
         self.configure()
