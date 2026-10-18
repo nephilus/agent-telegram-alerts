@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.3.0...v0.4.0) (2026-10-18)
+
+
+### Features
+
+* add safe clickable output links ([#10](https://github.com/nephilus/jcode-telegram-alerts/issues/10)) ([06769c1](https://github.com/nephilus/jcode-telegram-alerts/commit/06769c159e529323c11e3ace9b39af8d7be8b47c))
+
 ## [0.3.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.2.1...v0.3.0) (2026-10-17)
 
 
