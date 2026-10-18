@@ -1,6 +1,6 @@
 ---
 name: owner-review
-description: "Doc reviews and genuine owner-dependent choices: publish scoped Plannotator reviews and correlate owner feedback."
+description: "ADR writing, doc reviews and owner-dependent choices: publish scoped reviews and correlate feedback."
 ---
 
 # Owner review
@@ -10,6 +10,16 @@ The global overlay supplies policy and triggers. This skill supplies mechanics, 
 ## Prepare the scoped revision
 
 Identify document feedback, a question, or a specific approval-required action. State exactly what a response authorizes and what remains outside scope. For material decisions, commit and publish the Proposed ADR first, retaining a durable GitHub revision link as fallback alongside the live review URL. Do not guess either link.
+
+### ADR decision statement
+
+For new or substantively updated material ADRs, open **Decision** with the long-form Y-statement:
+
+> In the context of <use case/user story>, facing <concern>, we decided for <option> and neglected <other options>, to achieve <system qualities/desired consequences>, accepting <downside/undesired consequences>, because <additional rationale>.
+
+Keep **Status** and useful supporting context/evidence. Name rejected alternatives and explain why; replace every placeholder with concrete project facts. Preserve historical ADRs unless a substantive change already calls for updating them. Routine reversible choices remain implementation details, not new ADRs or approval gates.
+
+### Review receipt and small choices
 
 Record the originating Jcode session, repository, document path, commit, SHA-256 of the exact file, review scope and stable decision/revision key in a private receipt. Retain the eventual actual URL, background job identifier, result path and delivery outcome there. Keep credentials and private receipt content out of repository documents.
 
