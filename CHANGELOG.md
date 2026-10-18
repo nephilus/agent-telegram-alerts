@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.4.0...v0.5.0) (2026-10-18)
+
+
+### Features
+
+* add explicit owner attention handoffs ([#12](https://github.com/nephilus/jcode-telegram-alerts/issues/12)) ([148184a](https://github.com/nephilus/jcode-telegram-alerts/commit/148184aa51bc695676f3560c3446ac67520be7b2))
+
 ## [0.4.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.3.0...v0.4.0) (2026-10-18)
 
 
