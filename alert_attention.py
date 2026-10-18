@@ -1,11 +1,12 @@
 """Explicit owner handoffs, separate from best-effort routine completion alerts."""
+import os
 import json
 import re
 import time
 from urllib.parse import urlsplit
 
 import alert_format as formatting
-from alert_links import safe_url
+from alert_links import safe_url, _known, _TOKEN, _MAX_URL
 import alert_policy as policy
 
 MAX_INPUT_BYTES = 8192
@@ -17,6 +18,67 @@ MAX_STATE_BYTES = 65536
 
 class AttentionError(ValueError):
     """Only fixed, user-safe diagnostics may cross the CLI boundary."""
+
+
+REVIEW_FILE = "telegram-review-policy.json"
+REVIEW_ERROR = "Review host configuration could not be used safely. No message sent."
+
+
+def _review_host(host):
+    return (isinstance(host, str) and host == host.lower()
+            and re.fullmatch(r'[a-z0-9.-]+', host) is not None
+            and len(host.split('.')) >= 4 and host.endswith('.ts.net')
+            and safe_url('https://' + host) == 'https://' + host)
+
+
+def _review_policy(value):
+    if (not isinstance(value, dict) or set(value) != {'version', 'host'}
+            or type(value['version']) is not int or value['version'] != 1
+            or (value['host'] is not None and not _review_host(value['host']))):
+        raise ValueError
+    return value
+
+
+def review_host(home, host=None, *, write=False):
+    """Query without creating files, or atomically set one private trusted host."""
+    try:
+        value = _review_policy({'version': 1, 'host': host})
+        # _directory permits legacy writable directories for missing routine
+        # policy queries. That compatibility exception is not for review trust.
+        try:
+            if os.stat(os.path.join(home, 'notifications'), follow_symlinks=False).st_mode & 0o022:
+                raise ValueError
+        except FileNotFoundError:
+            pass
+        with policy._directory(home, create=write) as folder:
+            if folder is None:
+                return value
+            if write:
+                with policy._locked(folder, '.telegram-review.lock'):
+                    _review_policy(policy._read(folder, REVIEW_FILE, 1024, value, True))
+                    policy._write(folder, REVIEW_FILE, value, 1024)
+                return value
+            return _review_policy(policy._read(folder, REVIEW_FILE, 1024,
+                                               {'version': 1, 'host': None}, True))
+    except (OSError, ValueError, TypeError, RecursionError):
+        raise AttentionError(REVIEW_ERROR) from None
+
+
+def _review_url(value, host, port, secrets):
+    # Check the original, not just the port-neutral candidate, for all raw
+    # hazards and known secrets (including secrets occurring in the port).
+    if (not isinstance(value, str) or not value or len(value) > _MAX_URL
+            or any(ord(c) < 33 or ord(c) > 126 for c in value)
+            or any(c in value for c in '\\%?#[]"\'<>')
+            or _known(value, secrets) or _TOKEN.search(value)):
+        return None
+    authority = host + ':' + str(port)
+    if value not in ('https://' + authority, 'https://' + authority + '/'):
+        return None
+    path = '/' if value.endswith('/') else ''
+    if safe_url('https://' + host + path, secrets) is None:
+        return None
+    return value
 
 
 def read_request(stream):
@@ -48,7 +110,15 @@ def _text(value, title, limit, secrets, *, optional=False):
     return cleaned
 
 
-def render(request, environment, home, secrets=()):
+def render(request, environment, home, secrets=(), *, review_port=None):
+    secrets = tuple(secrets)
+    host = None
+    if review_port is not None:
+        if type(review_port) is not int or not 1024 <= review_port <= 65535:
+            raise AttentionError("Review port must be an integer from 1024 through 65535. No message sent.")
+        host = review_host(home)['host']
+        if host is None:
+            raise AttentionError(REVIEW_ERROR)
     allowed = {"context", "needs_you", "recommendation", "links"}
     if not isinstance(request, dict) or not {"context", "needs_you"} <= request.keys() or request.keys() - allowed:
         raise AttentionError("Attention requires context and needs_you; only recommendation and links are optional.")
@@ -59,17 +129,22 @@ def render(request, environment, home, secrets=()):
     if not isinstance(supplied, list) or len(supplied) > 3:
         raise AttentionError("Attention links must be a list of at most three label/url objects.")
     links = []
+    matched_review = False
     for link in supplied:
         if not isinstance(link, dict) or set(link) != {"label", "url"}:
             raise AttentionError("Each attention link requires only label and url.")
         label = _text(link["label"], "link label", 80, secrets)
         if len(label.splitlines()) != 1 or "[redacted]" in label:
             raise AttentionError("Attention link labels must be single-line, non-sensitive text.")
-        target = safe_url(link["url"], secrets)
+        review = _review_url(link['url'], host, review_port, secrets) if host else None
+        matched_review = matched_review or review is not None
+        target = review or safe_url(link["url"], secrets)
         if target is None:
             raise AttentionError("Attention link rejected: use a verified public-DNS HTTPS URL without credentials, query, fragment, escapes or a non-443 port. No message sent.")
         # Show the destination host even when the agent supplies a friendly label.
         links.append({"label": label + " · " + urlsplit(target).netloc, "url": target})
+    if review_port is not None and not matched_review:
+        raise AttentionError("Attention requires a matching root HTTPS review link for the declared port. No message sent.")
     text, entities = "🔔 ", []
 
     def append(value, *, bold=False):
@@ -114,7 +189,7 @@ def _state(value):
     return value
 
 
-def publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False):
+def _publish_options(environment, key, destination_fingerprint, resend):
     session = environment.get("JCODE_SESSION_ID")
     if not isinstance(session, str) or not re.fullmatch(r"session_[A-Za-z0-9_-]{1,180}", session):
         raise AttentionError("Attention requires JCODE_SESSION_ID from a Jcode tool invocation.")
@@ -123,7 +198,35 @@ def publish(home, environment, request, key, deliver, destination_fingerprint, *
     if (not isinstance(destination_fingerprint, str) or not policy._HEX.fullmatch(destination_fingerprint)
             or type(resend) is not bool):
         raise AttentionError("Invalid attention destination or resend option.")
-    message = render(request, environment, home, secrets)
+
+
+def publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False, review_port=None):
+    _publish_options(environment, key, destination_fingerprint, resend)
+    options = {'secrets': secrets, 'resend': resend, 'review_port': review_port}
+    if review_port is None:
+        return _publish(home, environment, request, key, deliver, destination_fingerprint, **options)
+    # Reject malformed input or absent/unsafe trust before any lock-file
+    # creation, then validate again under the trust lock before sending.
+    options['secrets'] = tuple(secrets)
+    render(request, environment, home, options['secrets'], review_port=review_port)
+    try:
+        with policy._directory(home) as folder:
+            if folder is None:
+                raise AttentionError(REVIEW_ERROR)
+            # Always take review before attention state. _publish/render re-reads
+            # trust inside this lock, held until delivery and recording finish.
+            # Thus a completed revoke cannot be followed by an old-trust send.
+            with policy._locked(folder, '.telegram-review.lock'):
+                return _publish(home, environment, request, key, deliver, destination_fingerprint, **options)
+    except AttentionError:
+        raise
+    except (OSError, ValueError, TypeError, RecursionError):
+        raise AttentionError(REVIEW_ERROR) from None
+
+
+def _publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False, review_port=None):
+    session = environment.get("JCODE_SESSION_ID")
+    message = render(request, environment, home, secrets, review_port=review_port)
     try:
         config = policy.load_policy(home)
         if session in config["exclude_sessions"] or (config["include_sessions"] and session not in config["include_sessions"]):
