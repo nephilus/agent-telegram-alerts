@@ -14,7 +14,7 @@
 - Sends qualifying completion/error alerts by default, with quiet routine activity, per-session cooldowns and repeated-error suppression.
 - Offers an optional editable session status card instead of a stream of routine messages.
 - Offers **brief**, **contextual**, and **expanded** profiles. Expanded is the default.
-- Uses bold headings, readable section spacing, and useful emojis.
+- Uses bold headings, readable section spacing, useful emojis, and compact clickable output links.
 - Links a dedicated bot through a private-chat challenge and hidden terminal token entry.
 - Adds/removes its own hook without replacing unrelated hooks or Telegram settings.
 - Uses only the Python standard library at runtime. Python **3.11+** and Linux/macOS are supported.
@@ -46,7 +46,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.3.0"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.4.0"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install
@@ -104,6 +104,16 @@ jcode-telegram preview --session SESSION_ID
 Names are read again for each rendered alert, so subsequent renames need no helper restart. The line stays single-line and is redacted before shortening: brief allows 2 words / 40 characters, contextual 5 / 80, expanded 8 / 120, within the existing whole-alert caps. Paths in names remain redacted, unlike the intentional folder metadata exception. A meaningful name supplements the working folder, not replaces it. Avoid confidential names because this metadata is forwarded to your configured Telegram destination.
 
 **Privacy:** the folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
+
+## Clickable output links
+
+Useful links in the current assistant output appear in a compact **🔗 Links** section. Both bare HTTPS URLs and ordinary Markdown links are supported. A GitHub pull request gets a clickable label such as **GitHub PR #42**. Other labels show the destination host and a bounded path, never an arbitrary Markdown label. Telegram preview cards are disabled.
+
+Brief keeps up to one link, contextual two, and expanded three, within the existing whole-alert caps. Complete link labels and result text take priority over optional grouped-count text. The section uses current output only, or the current error on failure. Requests, session names, old successful output and lifecycle-only events do not supply links.
+
+Only conservative ASCII HTTPS destinations are accepted. Query strings, fragments, percent escapes, embedded credentials, IP/local targets, nonstandard ports and credential-shaped targets are omitted. Code fences and secret-redacted lines cannot contribute links. The helper does not fetch destinations, resolve DNS, follow redirects or check repository visibility. A normal-looking hostname or repository path is not proof that its content is public.
+
+**Privacy:** accepted link targets are intentionally sent to your configured Telegram destination, even though URLs remain redacted from ordinary request/result excerpts. Repository names and URL paths can themselves be sensitive. This is a forwarding feature, not a guarantee that a destination is safe or public. Preview first for confidential work.
 
 ## Choose verbosity
 

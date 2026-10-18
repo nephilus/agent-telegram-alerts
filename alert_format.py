@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import stat
 
+from alert_links import extract_links
+
 PROFILES = {
     "brief": {"words": 25, "chars": 320, "asked": 6, "result": 8, "checked": 0, "next": 0, "asked_chars": 80, "result_chars": 110, "extra_chars": 0},
     "contextual": {"words": 60, "chars": 800, "asked": 12, "result": 18, "checked": 8, "next": 8, "asked_chars": 180, "result_chars": 300, "extra_chars": 100},
@@ -49,6 +51,7 @@ def sanitize(text, secrets=(), *, redact_paths=True):
     text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email]", text)
     if redact_paths:
         text = re.sub(r"(?<!\w)(?:~?/|[A-Za-z]:\\)[^\s,;]+", "[path]", text)
+    text = re.sub(r"\[([^\]\n]+)\]\(\[link\]\)?", r"\1 [link]", text)
     text = re.sub(r"\[([^\]\n]+)\]\([^\n)]*\)", r"\1", text)
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
@@ -212,6 +215,64 @@ def session_label(name, verbosity="expanded", secrets=()):
     return clip(" ".join(sanitize(name, secrets).split()), words, chars)
 
 
+def response_links(response, secrets=()):
+    """Keep validated original targets only when existing secret masking permits.
+
+    Collision-free markers protect URL characters from ordinary body Markdown
+    cleanup. A marker inside a secret value or code fence must not survive.
+    Markers, source strings and URLs never enter local diagnostic receipts.
+    """
+    if not isinstance(response, str):
+        return []
+    # Keep one lookahead character so extraction can reject a target crossing
+    # its 16000-character scan boundary instead of accepting a truncated prefix.
+    source = response[:16001].encode("utf-8", errors="replace").decode("utf-8")
+    # An invalid-URI sentinel, not deletion or whitespace, prevents adjoining
+    # URL fragments from becoming a fabricated target or a shorter prefix.
+    source = re.sub(r"```.*?(?:```|\Z)|~~~.*?(?:~~~|\Z)",
+                    lambda match: "\x00" * len(match[0]), source, flags=re.S)
+    links = extract_links(source, secrets, limit=12)
+    prefix = "JCODEALERTLINK"
+    normalized = sanitize(source, secrets)
+    while prefix in source or prefix in normalized:
+        prefix += "X"
+    chunks, candidates, cursor = [], [], 0
+    for index, link in enumerate(links):
+        start, end = link["start"], link["end"]
+        if not cursor <= start < end <= len(source) or source[start:end] != link["source"]:
+            continue
+        marker = f"{prefix}{index}END"
+        chunks.extend((source[cursor:start], marker))
+        cursor = end
+        candidates.append((marker, link))
+    chunks.append(source[cursor:])
+    masked = "".join(chunks)
+    if candidates:
+        markers = "|".join(re.escape(marker) for marker, _ in candidates)
+        # Source labels are not trusted. Reduce the whole Markdown link to its
+        # marker before secret scanning, including labels containing spaces.
+        masked = re.sub(r"\[[^\]\n]*\]\(\s*(" + markers + r")\s*\)", r"\1", masked)
+    allowed = "\n".join(line for line in sanitize(masked, secrets).splitlines()
+                        if "[redacted]" not in line)
+    return [{"url": link["url"], "label": link["label"]}
+            for marker, link in candidates if marker in allowed][:3]
+
+
+def link_footer(links, verbosity):
+    if not links:
+        return {"text": "", "entities": []}
+    prefix = "\n\n🔗 "
+    text = prefix + "Links:" + (" " if verbosity == "brief" else "\n")
+    entities = [{"type": "bold", "offset": utf16_length(prefix), "length": len("Links:")}]
+    for index, link in enumerate(links):
+        if index:
+            text += " · " if verbosity == "brief" else "\n"
+        entities.append({"type": "text_link", "offset": utf16_length(text),
+                         "length": utf16_length(link["label"]), "url": link["url"]})
+        text += link["label"]
+    return {"text": text, "entities": entities}
+
+
 def render_message(environment, verbosity="expanded", prompt="", secrets=(), *, session_name=""):
     """Return literal text, trusted bold spans, and local context metadata.
 
@@ -250,15 +311,32 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=(), *, 
     response = environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", "")
     if failed:
         response = environment.get("JCODE_HOOK_ERROR") or "Turn failed. No error details available."
+    links = response_links(response, secrets)[:{"brief": 1, "contextual": 2, "expanded": 3}[verbosity]]
+    footer = link_footer(links, verbosity)
+    # Preserve complete clickable labels and at least some result text. Never
+    # attach a destination to a label truncated by either clipping stage.
+    while links:
+        minimum = "".join(chunks) + "\n\n📝 Result: X" + footer["text"]
+        if len(minimum) <= profile["chars"] and len(minimum.split()) <= profile["words"]:
+            break
+        links.pop()
+        footer = link_footer(links, verbosity)
+    body_words = profile["words"] - len(footer["text"].split())
+    body_chars = profile["chars"] - len(footer["text"])
     result, checked, next_step = response_parts(response, secrets)
-    result = clip(result or "No response excerpt available. Open Jcode to review.", profile["result"], profile["result_chars"])
+    result_words, result_chars = profile["result"], profile["result_chars"]
+    if verbosity == "brief":
+        reserved = "".join(chunks) + "\n\n📝 Result: "
+        result_words = max(1, min(result_words, body_words - len(reserved.split())))
+        result_chars = max(2, min(result_chars, body_chars - len(reserved)))
+    result = clip(result or "No response excerpt available. Open Jcode to review.", result_words, result_chars)
     request = " ".join(sanitize(user_request(prompt), secrets).split())
     asked_words, asked_chars = profile["asked"], profile["asked_chars"]
     if verbosity == "brief":
         # A longer folder/duration must never push the result out of a brief alert.
         reserved = "".join(chunks) + "\n\n📝 Result: " + result + "\n\n💬 Asked: "
-        asked_words = min(asked_words, profile["words"] - len(reserved.split()))
-        asked_chars = min(asked_chars, profile["chars"] - len(reserved))
+        asked_words = min(asked_words, body_words - len(reserved.split()))
+        asked_chars = min(asked_chars, body_chars - len(reserved))
     if request and asked_words > 0 and asked_chars > 1:
         field("💬", "Asked", clip(request, asked_words, asked_chars))
     field("📝", "Result", result)
@@ -267,12 +345,13 @@ def render_message(environment, verbosity="expanded", prompt="", secrets=(), *, 
     if next_step and profile["next"]:
         field("👉", "Needs you", clip(next_step, profile["next"], profile["extra_chars"]))
     original = "".join(chunks)
-    text = clip(original, profile["words"], profile["chars"])
+    text = clip(original, body_words, body_chars)
     entities = [
         {"type": "bold", "offset": utf16_length(text[:start]), "length": utf16_length(text[start:end])}
         for start, end in spans if end <= len(text) and text[start:end] == original[start:end]
     ]
-    return {"text": text, "entities": entities, "prompt_available": bool(request)}
+    shifted = prepend_message(footer, text)
+    return {"text": shifted["text"], "entities": entities + shifted["entities"], "prompt_available": bool(request)}
 
 
 def render(environment, verbosity="expanded", prompt="", secrets=(), *, session_name=""):
@@ -318,16 +397,25 @@ def prepend_message(message, prefix):
 
 
 def formatting_confirmed(message, delivered):
-    """Confirm Telegram returned all expected bold spans, allowing auto entities."""
-    expected = {(entity["offset"], entity["length"]) for entity in message["entities"]}
+    """Bind trusted bold/link spans and exact targets, allowing auto entities."""
+    def keys(entities):
+        result = set()
+        for entity in entities:
+            if not isinstance(entity, dict) or entity.get("type") not in ("bold", "text_link"):
+                continue
+            if any(type(entity.get(key)) is not int for key in ("offset", "length")):
+                return None
+            url = entity.get("url") if entity["type"] == "text_link" else None
+            if entity["type"] == "text_link" and (not isinstance(url, str) or not url):
+                return None
+            result.add((entity["type"], entity["offset"], entity["length"], url))
+        return result
+
+    expected = keys(message["entities"])
     actual = delivered.get("entities", [])
     if not isinstance(actual, list):
         return False
-    bold = [entity for entity in actual if isinstance(entity, dict) and entity.get("type") == "bold"]
-    if any(type(entity.get(key)) is not int for entity in bold for key in ("offset", "length")):
-        return False
-    actual = {(entity["offset"], entity["length"]) for entity in bold}
-    return bool(expected) and expected == actual and delivered.get("text") == message["text"]
+    return bool(expected) and expected == keys(actual) and delivered.get("text") == message["text"]
 
 
 def sample_event():
