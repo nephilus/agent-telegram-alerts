@@ -30,6 +30,31 @@ def fragment(message, entity):
 
 
 class OutputLinkTests(unittest.TestCase):
+    def test_wrapped_links_and_newline_prose_have_no_dead_body_placeholders(self):
+        for wrapped in (PR, '[Readable review](' + PR + ')', '<' + PR + '>', '`' + PR + '`'):
+            for profile in fmt.PROFILES:
+                with self.subTest(wrapped=wrapped, profile=profile):
+                    output = 'Result: 🚀 Review ' + wrapped + '\n- Added focused tests.'
+                    message = fmt.render_message(event(JCODE_HOOK_LAST_ASSISTANT_TEXT=output), profile)
+                    entities = link_entities(message)
+                    self.assertEqual([item['url'] for item in entities], [PR])
+                    self.assertEqual(fragment(message, entities[0]), 'GitHub PR #42')
+                    self.assertNotIn('[link]', message['text'])
+                    self.assertNotIn('<>', message['text'])
+                    if wrapped.startswith('[') and profile == 'expanded':
+                        self.assertIn('Readable review', message['text'])
+                    self.assertTrue(fmt.formatting_confirmed(message, message))
+
+    def test_rejected_urls_and_prompt_urls_do_not_leave_dead_placeholders(self):
+        message = fmt.render_message(event(JCODE_HOOK_LAST_ASSISTANT_TEXT=
+            'Result: Read [the guide](https://example.com/?token=PRIVATE_QUERY).'),
+            prompt='Review <' + DOC + '>')
+        self.assertFalse(link_entities(message))
+        self.assertIn('the guide', message['text'])
+        self.assertNotIn('[link]', message['text'])
+        self.assertNotIn('PRIVATE_QUERY', message['text'])
+        self.assertNotIn('<>', message['text'])
+
     def test_bare_and_markdown_pr_outputs_get_derived_clickable_labels_not_source_labels(self):
         for output in ("Result: Opened " + PR, "Result: Opened [Definitely another site](" + PR + ")."):
             with self.subTest(output=output):
