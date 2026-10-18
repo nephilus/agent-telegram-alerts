@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.5.0...v0.6.0) (2026-10-18)
+
+
+### Features
+
+* add private owner review workflow ([#14](https://github.com/nephilus/jcode-telegram-alerts/issues/14)) ([152836a](https://github.com/nephilus/jcode-telegram-alerts/commit/152836adb8c28c77e31063321046efc389f2754d))
+
 ## [0.5.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.4.0...v0.5.0) (2026-10-18)
 
 
