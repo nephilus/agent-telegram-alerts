@@ -38,5 +38,9 @@ jcode-telegram-hook = "hook_install:cli"
 [tool.setuptools]
 py-modules = ["jcode_telegram", "alert_format", "alert_links", "alert_policy", "alert_attention", "hook_install"]
 
+[tool.setuptools.data-files]
+"share/jcode-telegram-alerts/prompts" = ["prompts/owner-workflow.md"]
+"share/jcode-telegram-alerts/skills/owner-review" = ["skills/owner-review/SKILL.md"]
+
 [tool.setuptools.dynamic]
 version = {file = ["version.txt"]}

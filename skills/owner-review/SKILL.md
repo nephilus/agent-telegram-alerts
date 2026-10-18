@@ -1,0 +1,55 @@
+---
+name: owner-review
+description: "Doc reviews and genuine owner-dependent choices: publish scoped Plannotator reviews and correlate owner feedback."
+---
+
+# Owner review
+
+The global overlay supplies policy and triggers. This skill supplies mechanics, not a second policy copy. Reuse the installed Plannotator reference for uncommon flags and result/question schemas. Do not introduce a daemon, router or MCP service.
+
+## Prepare the scoped revision
+
+Identify document feedback, a question, or a specific approval-required action. State exactly what a response authorizes and what remains outside scope. For material decisions, commit and publish the Proposed ADR first, retaining a durable GitHub revision link as fallback alongside the live review URL. Do not guess either link.
+
+Record the originating Jcode session, repository, document path, commit, SHA-256 of the exact file, review scope and stable decision/revision key in a private receipt. Retain the eventual actual URL, background job identifier, result path and delivery outcome there. Keep credentials and private receipt content out of repository documents.
+
+For a small choice, include context, meaningful alternatives, recommendation/reason and room for comments in the relevant note. Native question syntax:
+
+```markdown
+:::question
+Which approach should this scoped change use?
+
+Context: Only the owner can decide this preference. Comments are welcome.
+
+- [ ] A: Preserve the current behavior
+- [ ] B: Adopt the proposed behavior
+
+Recommended: A: Preserve the current behavior
+Reason: It avoids changing the established workflow.
+:::
+```
+
+## Host and verify
+
+Create a private existing result directory and choose a new, nonexistent result target. Start the installed command through Jcode's background execution with completion wake support, without a fixed timeout that kills a pending review:
+
+```sh
+env -u PLANNOTATOR_PORT -u PLANNOTATOR_AGENT_TERMINAL_REMOTE PLANNOTATOR_BROWSER=none PLANNOTATOR_UPDATE_CHECK=0 PLANNOTATOR_AI=disabled \
+  plannotator annotate FILE --tailscale --gate --json --result-file NEW_PRIVATE_RESULT
+```
+
+Never prefix `--browser` before `annotate`: that parser combination is broken. Add `--require-approval` only for the explicitly scoped approval-required action, not ordinary document feedback or question answers. Keep host and process alive, use native background wait/wake, and continue independent authorized work.
+
+Capture the actual HTTPS URL printed by this job. Query `jcode-telegram review-host` for the configured exact host. If unset/off or mismatched, stop this handoff and report the trust prerequisite; never silently trust/configure each observed URL host. Check the root-origin HTTPS URL has that exact `device.tailnet.ts.net` host and the declared port in 1024..65535. Preserve the actual URL verbatim, including any query rather than guessing or stripping it. If incompatible with attention validation, report failure rather than rewrite it.
+
+Before handoff, use GET only to verify real HTTPS `/api/plan` serves the expected document and exact snapshot. Do not self-submit feedback. Native Tailscale Serve trusts permitted tailnet peers; do not use Funnel, remote terminals, or reset other mappings. Record preexisting mappings for cleanup comparison.
+
+## Notify and resolve
+
+Send `jcode-telegram attention` using the reviewed revision's stable `--key` and per-send `--review-port PORT`. Its JSON contains only `context`, `needs_you`, optional `recommendation`, and `links` entries with `label` and `url`. Include the actual review link and, for material ADRs, the durable GitHub fallback. Check the receipt/failure, not just command launch. Follow the overlay's retry and coordinator guardrails.
+
+For question answers or annotations, tell the owner to use **Send answers** or **Send feedback** as applicable; **Approve** alone does not submit those responses.
+
+Read this job's actual returned decision/answer and atomically published private result, checking exit status and publication success too. Exit 0, delivery receipts and API acknowledgements are not approval. An `annotated` answer may resolve its matching question but cannot approve a plan. Skipped, dismissed or empty responses remain unresolved. Strict actions require an explicit `approved` result for that exact scope/revision. A plan approval does not authorize merging, deployment or destructive actions.
+
+Before applying feedback, recompute the file hash and reject stale results on mismatch. Apply approved-with-notes clarifications without automatic re-review loops; changed material scope requires its own decision. Persist outcome and unresolved dependencies for the originating session. After completion verify native cleanup removed only the owned endpoint and preserved all other mappings. Report cleanup failures without broad reset commands.
