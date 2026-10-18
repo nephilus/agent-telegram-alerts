@@ -168,6 +168,23 @@ class AlertLinksTests(unittest.TestCase):
             self.assertIsNotNone(safe_url('https://github.com/' + short))
             self.assertIsNone(safe_url('https://github.com/' + short, [short]))
 
+    def test_normal_prose_boundaries_and_url_only_inline_code(self):
+        url = 'https://github.com/example/project/pull/42'
+        for wrapped in (url, '[review](' + url + ')', '<' + url + '>', '`' + url + '`'):
+            for tail in ('', '\nThe change is ready.', '\n- Added focused tests.',
+                         '\n1. Review the changes.', '\n\n  Ordinary prose follows.'):
+                text = wrapped + tail
+                with self.subTest(text=text):
+                    links = extract_links(text)
+                    self.assertEqual([item['url'] for item in links], [url])
+                    self.assertEqual(text[links[0]['start']:links[0]['end']], url)
+        for text in ('`' + url + '`evil', '`' + url + '?token=bad`',
+                     '`' + url, '``' + url + '``', '`' + url + ' extra`',
+                     '`' + url + ')`', '`' + url + '`?token=bad',
+                     url + '\n- /continuation', url + '\n/path more words'):
+            with self.subTest(text=text):
+                self.assertEqual(extract_links(text), [])
+
     def test_explicit_extended_sensitive_keys(self):
         for key in ('access_token', 'refresh_token', 'passwd', 'authorization',
                     'ACCESS_TOKEN', 'Refresh-Token', 'accessToken'):

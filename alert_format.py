@@ -25,13 +25,18 @@ def clip(text, words, chars=1400):
     return text
 
 
+def normalize_text(text):
+    """Normalize controls and Markdown before scanning public text for secrets or URLs."""
+    text = text.encode("utf-8", errors="replace").decode("utf-8")
+    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]", "", text)
+    text = re.sub(r"```.*?(?:```|\Z)|~~~.*?(?:~~~|\Z)", "", text, flags=re.S)
+    return text.replace("**", "").replace("`", "").replace("__", "")
+
+
 def sanitize(text, secrets=(), *, redact_paths=True):
     if not isinstance(text, str):
         return ""
-    text = text[:16000].encode("utf-8", errors="replace").decode("utf-8")
-    text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]", "", text)
-    text = re.sub(r"```.*?(?:```|\Z)|~~~.*?(?:~~~|\Z)", "", text, flags=re.S)
-    text = text.replace("**", "").replace("`", "").replace("__", "")
+    text = normalize_text(text[:16000])
     for secret in secrets:
         if isinstance(secret, str) and secret:
             text = text.replace(secret, "[redacted]")
@@ -53,6 +58,9 @@ def sanitize(text, secrets=(), *, redact_paths=True):
         text = re.sub(r"(?<!\w)(?:~?/|[A-Za-z]:\\)[^\s,;]+", "[path]", text)
     text = re.sub(r"\[([^\]\n]+)\]\(\[link\]\)?", r"\1 [link]", text)
     text = re.sub(r"\[([^\]\n]+)\]\([^\n)]*\)", r"\1", text)
+    # Masks are useful during Markdown cleanup, but are not clickable body
+    # links. Preserve readable labels without exporting dead placeholders.
+    text = text.replace("<[link]>", "").replace("[link]", "")
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
 

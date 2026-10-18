@@ -113,9 +113,10 @@ def extract_links(text, secrets=(), *, limit=3):
     source is the original URL substring without wrappers/prose punctuation.
     start/end are original-text slice offsets: text[start:end] == source.
     Candidate runs terminate at ASCII spaces or clear LF line boundaries.
-    LF is clear only before EOF, another HTTPS URL, or ASCII labeled prose
-    (for example 'Docs: ...'), ignoring blank lines/space indentation. Other
-    LF continuations reject the candidate. All non-LF controls are rejected.
+    LF is clear before EOF, another HTTPS URL, or recognizable ASCII prose
+    (including list items), ignoring blank lines/space indentation. Ambiguous
+    single tokens and path continuations reject the candidate. URL-only single
+    backtick wrappers are supported. All non-LF controls are rejected.
 
     Only the first 16000 characters are inspected. A candidate crossing that
     boundary is discarded, not truncated into an apparently safe destination.
@@ -144,6 +145,9 @@ def extract_links(text, secrets=(), *, limit=3):
                 (not following and len(text) <= _MAX_INPUT)
                 or _START.match(following)
                 or re.match(r"[A-Za-z][A-Za-z0-9 _-]{0,63}: +", following)
+                or re.match(r"(?:[-*•] +|[0-9]+[.)] +)?"
+                            r"[A-Za-z][A-Za-z0-9,'-]*(?: +[A-Za-z]|[.!](?: |$))",
+                            following)
             )
             if not clear_lf:
                 continue
@@ -153,11 +157,17 @@ def extract_links(text, secrets=(), *, limit=3):
         if len(candidate) > _MAX_URL + 16 or _known(candidate, secrets):
             continue
         angle = start > 0 and bounded[start - 1] == "<"
+        code = start > 0 and bounded[start - 1] == "`"
+        candidate = candidate.rstrip(".,!;:")
+        if code:
+            # Only a complete, URL-only single-backtick span is unambiguous.
+            if (start > 1 and bounded[start - 2] == "`") or not candidate.endswith("`"):
+                continue
+            candidate = candidate[:-1]
         if angle and candidate.endswith(">"):
             candidate = candidate[:-1]
-        candidate = candidate.rstrip(".,!;:")
         # Remove only unmatched terminal prose/Markdown parentheses.
-        while candidate.endswith(")") and candidate.count(")") > candidate.count("("):
+        while not code and candidate.endswith(")") and candidate.count(")") > candidate.count("("):
             candidate = candidate[:-1]
         url = safe_url(candidate, secrets)
         if url is None or url in seen:

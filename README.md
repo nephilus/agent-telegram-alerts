@@ -15,6 +15,7 @@
 - Offers an optional editable session status card instead of a stream of routine messages.
 - Offers **brief**, **contextual**, and **expanded** profiles. Expanded is the default.
 - Uses bold headings, readable section spacing, useful emojis, and compact clickable output links.
+- Sends explicit owner handoffs immediately with Context, a precise request, a recommendation and verified links.
 - Links a dedicated bot through a private-chat challenge and hidden terminal token entry.
 - Adds/removes its own hook without replacing unrelated hooks or Telegram settings.
 - Uses only the Python standard library at runtime. Python **3.11+** and Linux/macOS are supported.
@@ -46,7 +47,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.4.0"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.5.0"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install
@@ -114,6 +115,46 @@ Brief keeps up to one link, contextual two, and expanded three, within the exist
 Only conservative ASCII HTTPS destinations are accepted. Query strings, fragments, percent escapes, embedded credentials, IP/local targets, nonstandard ports and credential-shaped targets are omitted. Code fences and secret-redacted lines cannot contribute links. The helper does not fetch destinations, resolve DNS, follow redirects or check repository visibility. A normal-looking hostname or repository path is not proof that its content is public.
 
 **Privacy:** accepted link targets are intentionally sent to your configured Telegram destination, even though URLs remain redacted from ordinary request/result excerpts. Repository names and URL paths can themselves be sensitive. This is a forwarding feature, not a guarantee that a destination is safe or public. Preview first for confidential work.
+
+## Explicit attention when the owner is needed
+
+Routine alerts stay unchanged. When an agent genuinely needs owner input, it can run this command through Jcode's normal bash tool, **before waiting**:
+
+```sh
+jcode-telegram attention --key example/project:review:reviewed-head-sha <<'JSON'
+{
+  "context": "The proposed rollout is ready for owner review.",
+  "needs_you": "Review the proposed ADR before the live cutover.",
+  "recommendation": "Use a staged cutover because it preserves rollback.",
+  "links": [{"label": "Review ADR", "url": "https://github.com/example/project/blob/reviewed-head-sha/docs/adr/0001-rollout.md"}]
+}
+JSON
+```
+
+This is an illustrative shape, not a real pending request or a verified destination. The agent must supply the actual published revision and verify that the intended reviewer can access it. The command validates URL syntax offline; it does not fetch or prove publication, public visibility or authorization.
+
+The command requires the native `JCODE_SESSION_ID` environment variable and displays the command's current working directory, which may differ from the session's original folder. An explicit saved session name is included when safely readable. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, put the choices in `needs_you` and the preferred option plus reason in `recommendation`.
+
+Attention uses its own bounded layout, not the routine verbosity profiles. It rejects oversized messages rather than cutting a decision or link. It sends a fresh message with normal notification requested, bypassing routine duration thresholds, completion cooldowns and status-card edits. It still respects a disabled native Telegram channel and session include/exclude filters. It never changes those settings. Telegram/phone mute settings can still prevent a visible or audible notification.
+
+The key identifies one decision at one reviewed revision. Reuse it across continuation turns; include the repository and revision so unrelated work does not collide. Already-acknowledged keys return `already_sent` without contacting Telegram. The same key remains deduplicated across sessions sharing the destination. Only when the owner explicitly asks for another copy, repeat the command with `--resend`. A changed decision or reviewed revision needs a new key. Private fingerprint-only history is bounded to 256 active keys and expires after 30 days; active capacity fails closed. No raw request, URL, key or transcript is saved in that state.
+
+Success prints JSON with `state: sent`, `response_confirmed` and `formatting_confirmed`; duplicates print `state: already_sent`. Failures exit nonzero with a controlled diagnostic. Success requires the Telegram-returned message ID, text and exact bold/link entities. There are no automatic retries: after a timeout or unconfirmed response, delivery may already have occurred. A Telegram acknowledgment is not proof that the owner read or approved anything.
+
+The existing conservative URL rules apply. Unsupported private/IP targets, non-443 ports, credential-shaped paths and query/fragment/signed links are rejected visibly, not silently replaced with `[link]`. Do not strip sensitive parameters to manufacture an apparently acceptable destination.
+
+### Small agent instruction block
+
+Add this to an existing global or project prompt overlay if you want the behavior across tasks. Installation does not write agent instructions automatically. New sessions load overlay edits; instruct an existing session explicitly.
+
+```text
+Work autonomously within agreed scope. Choose sensible, reversible implementation defaults without asking.
+Before genuinely waiting for owner input, use jcode-telegram attention with brief Context, the exact request, a recommendation when applicable and verified links. Reuse the same key for the same decision/reviewed revision. Use --resend only on an explicit owner request, not to work around a failure.
+For major decisions, link a committed, published Proposed ADR in the owning repository. For smaller decisions that genuinely need an owner choice, offer 2-3 meaningful options and explain the recommended one. Multiple options alone are not a reason to ask.
+Check the command result and report failure honestly without automatic retries. Continue independently authorized work while waiting. A notification is not approval. Workers report to their coordinator rather than issuing duplicate owner requests.
+```
+
+No new skill, native Jcode patch, model, daemon, reply poller or approval execution is involved. The agent still chooses whether to invoke the command; the current hook API cannot guarantee invocation. Existing native remote-reply behavior is unchanged. See [ADR 0001](docs/adr/0001-explicit-attention-alerts.md).
 
 ## Choose verbosity
 

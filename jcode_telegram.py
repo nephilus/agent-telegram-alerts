@@ -334,9 +334,15 @@ def record_receipt(state, **metadata):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "attention --key REPO:DECISION:REVISION reads JSON from stdin: required context "
+        "(400 chars), needs_you (800); optional recommendation (600), links "
+        "(up to 3 label/url objects, labels 80 chars). Runs in Jcode using JCODE_SESSION_ID. "
+        "Sends a fresh message outside routine cooldowns; reuse the key for duplicates. "
+        "Use --resend only for an explicit owner resend request. No automatic retries."
+    ))
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
-    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy"))
+    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention"))
     parser.add_argument("value", nargs="?", help="verbosity level or delivery-policy preset")
     parser.add_argument("--min-seconds", type=int, default=30)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
@@ -354,7 +360,13 @@ def main():
     parser.add_argument("--include-session", action="append", help="policy: replace explicit included session IDs")
     parser.add_argument("--exclude-session", action="append", help="policy: replace explicit excluded session IDs")
     parser.add_argument("--clear-session-filters", action="store_true", help="policy: clear explicit session filters")
+    parser.add_argument("--key", help="attention: stable repository/decision/reviewed-revision identifier")
+    parser.add_argument("--resend", action="store_true", help="attention: send again only when the owner explicitly requests it")
     args = parser.parse_args()
+    if args.command != "attention" and (args.key is not None or args.resend):
+        parser.error("--key and --resend are only valid after attention")
+    if args.command == "attention" and (not args.key or args.verbosity is not None):
+        parser.error("attention requires --key and uses its own bounded layout, not --verbosity")
     if args.value and args.command not in ("verbosity", "policy"):
         parser.error("a positional value is only valid after verbosity or policy")
     if args.command == "verbosity" and args.value and args.value not in formatting.PROFILES:
@@ -375,6 +387,29 @@ def main():
         parser.error("--event is only valid for the no-send preview command")
     if args.session and args.event not in (None, "completion"):
         parser.error("saved sessions can preview completion text only")
+    if args.command == "attention":
+        import alert_attention
+        try:
+            request = alert_attention.read_request(sys.stdin)
+            token, chat = credentials()
+            environment = {"JCODE_SESSION_ID": os.environ.get("JCODE_SESSION_ID"),
+                           "JCODE_HOOK_CWD": os.getcwd()}
+            destination = hashlib.sha256((token + "\0" + chat).encode()).hexdigest()
+
+            def deliver(method, body):
+                try:
+                    return api(token, method, {**body, "chat_id": chat})
+                except SetupError:
+                    raise alert_attention.AttentionError(
+                        "Attention delivery was not confirmed. It may have arrived; do not retry automatically."
+                    ) from None
+
+            receipt = alert_attention.publish(config_path().parent, environment, request, args.key,
+                                              deliver, destination, secrets=(token, chat), resend=args.resend)
+        except alert_attention.AttentionError as error:
+            raise SetupError(str(error)) from None
+        print(json.dumps(receipt, sort_keys=True))
+        return
     if args.command == "policy":
         import alert_policy
         if set(args.enable or []) & set(args.disable or []):
