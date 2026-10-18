@@ -27,6 +27,11 @@ runs:
         cd "$smoke_dir"
         "$smoke_dir/venv/bin/jcode-telegram" --help
         "$smoke_dir/venv/bin/jcode-telegram" --version
+        "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/jcode-telegram-alerts"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "name: owner-review" in (root / "skills/owner-review/SKILL.md").read_text()'
+        "$smoke_dir/venv/bin/jcode-telegram" review-host
+        test ! -e "$JCODE_HOME/notifications/telegram-review-policy.json"
+        "$smoke_dir/venv/bin/jcode-telegram" review-host device.tailnet.ts.net
+        "$smoke_dir/venv/bin/jcode-telegram" review-host off
         "$smoke_dir/venv/bin/jcode-telegram" preview
         for event in session_start turn_start completion error session_end; do
           "$smoke_dir/venv/bin/jcode-telegram" preview --event "$event"

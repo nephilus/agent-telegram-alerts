@@ -47,7 +47,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.5.0"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.6.0"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install
@@ -126,14 +126,14 @@ jcode-telegram attention --key example/project:review:reviewed-head-sha <<'JSON'
   "context": "The proposed rollout is ready for owner review.",
   "needs_you": "Review the proposed ADR before the live cutover.",
   "recommendation": "Use a staged cutover because it preserves rollback.",
-  "links": [{"label": "Review ADR", "url": "https://github.com/example/project/blob/reviewed-head-sha/docs/adr/0001-rollout.md"}]
+  "links": [{"label": "Review ADR", "url": "https://github.com/example/project/blob/reviewed-head-sha/docs/adrs/0001-rollout.md"}]
 }
 JSON
 ```
 
 This is an illustrative shape, not a real pending request or a verified destination. The agent must supply the actual published revision and verify that the intended reviewer can access it. The command validates URL syntax offline; it does not fetch or prove publication, public visibility or authorization.
 
-The command requires the native `JCODE_SESSION_ID` environment variable and displays the command's current working directory, which may differ from the session's original folder. An explicit saved session name is included when safely readable. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, put the choices in `needs_you` and the preferred option plus reason in `recommendation`.
+The command requires the native `JCODE_SESSION_ID` environment variable and displays the command's current working directory, which may differ from the session's original folder. An explicit saved session name is included when safely readable. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, the optional owner workflow presents a Plannotator question card; the alert carries its precise request, recommendation and verified link.
 
 Attention uses its own bounded layout, not the routine verbosity profiles. It rejects oversized messages rather than cutting a decision or link. It sends a fresh message with normal notification requested, bypassing routine duration thresholds, completion cooldowns and status-card edits. It still respects a disabled native Telegram channel and session include/exclude filters. It never changes those settings. Telegram/phone mute settings can still prevent a visible or audible notification.
 
@@ -141,20 +141,17 @@ The key identifies one decision at one reviewed revision. Reuse it across contin
 
 Success prints JSON with `state: sent`, `response_confirmed` and `formatting_confirmed`; duplicates print `state: already_sent`. Failures exit nonzero with a controlled diagnostic. Success requires the Telegram-returned message ID, text and exact bold/link entities. There are no automatic retries: after a timeout or unconfirmed response, delivery may already have occurred. A Telegram acknowledgment is not proof that the owner read or approved anything.
 
-The existing conservative URL rules apply. Unsupported private/IP targets, non-443 ports, credential-shaped paths and query/fragment/signed links are rejected visibly, not silently replaced with `[link]`. Do not strip sensitive parameters to manufacture an apparently acceptable destination.
+The existing conservative URL rules remain the default. Unsupported private/IP targets, non-443 ports, credential-shaped paths and query/fragment/signed links are rejected visibly, not silently replaced with `[link]`. Do not strip sensitive parameters to manufacture an apparently acceptable destination.
 
-### Small agent instruction block
+### Optional Plannotator owner workflow
 
-Add this to an existing global or project prompt overlay if you want the behavior across tasks. Installation does not write agent instructions automatically. New sessions load overlay edits; instruct an existing session explicitly.
+Use the [versioned overlay](prompts/owner-workflow.md) and thin [owner-review skill](skills/owner-review/SKILL.md) for a make-it-right quality bar, one global Markdown folder standard, Plannotator/Tailscale document reviews and necessary small-decision cards. The [adoption guide](docs/owner-workflow.md) explains private backups, installation, cached skills, scoped results and rollback. Released wheels include both templates as opt-in data. Package/hook installation does not overwrite agent instructions automatically.
 
-```text
-Work autonomously within agreed scope. Choose sensible, reversible implementation defaults without asking.
-Before genuinely waiting for owner input, use jcode-telegram attention with brief Context, the exact request, a recommendation when applicable and verified links. Reuse the same key for the same decision/reviewed revision. Use --resend only on an explicit owner request, not to work around a failure.
-For major decisions, link a committed, published Proposed ADR in the owning repository. For smaller decisions that genuinely need an owner choice, offer 2-3 meaningful options and explain the recommended one. Multiple options alone are not a reason to ask.
-Check the command result and report failure honestly without automatic retries. Continue independently authorized work while waiting. A notification is not approval. Workers report to their coordinator rather than issuing duplicate owner requests.
-```
+For native Plannotator's non-443 origin, explicitly configure one exact trusted tailnet host with `jcode-telegram review-host HOST`. Then declare its actual port for each handoff with `attention --review-port PORT`. This attention-only exception accepts only the configured host, declared port and HTTPS root origin. A declared review requires a matching link. Routine output extraction remains unchanged. See [ADR 0002](docs/adrs/0002-private-owner-reviews.md).
 
-No new skill, native Jcode patch, model, daemon, reply poller or approval execution is involved. The agent still chooses whether to invoke the command; the current hook API cannot guarantee invocation. Existing native remote-reply behavior is unchanged. See [ADR 0001](docs/adr/0001-explicit-attention-alerts.md).
+Normal installed Jcode `v0.98.1` reloaded an edited overlay in an actual resumed-session check without compaction. Custom SDK prompts and cached skill catalogs differ, so the guide includes an installed-file fallback. Prompt guidance is not a guaranteed tool-call gate.
+
+No native Jcode patch, model, daemon, reply poller or automatic approval execution is added. Existing native remote-reply behavior is unchanged: use Plannotator or GitHub for the answer, not an uncorrelated Telegram reply. [ADR 0001](docs/adrs/0001-explicit-attention-alerts.md) remains the original attention design.
 
 ## Choose verbosity
 

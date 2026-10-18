@@ -334,17 +334,33 @@ def record_receipt(state, **metadata):
 
 
 def main():
+    def review_port(value):
+        try:
+            port = int(value)
+            if 1024 <= port <= 65535:
+                return port
+        except ValueError:
+            pass
+        raise argparse.ArgumentTypeError('review port must be an integer from 1024 through 65535')
+
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
         "attention --key REPO:DECISION:REVISION reads JSON from stdin: required context "
         "(400 chars), needs_you (800); optional recommendation (600), links "
         "(up to 3 label/url objects, labels 80 chars). Runs in Jcode using JCODE_SESSION_ID. "
         "Sends a fresh message outside routine cooldowns; reuse the key for duplicates. "
-        "Use --resend only for an explicit owner resend request. No automatic retries."
+        "Use --resend only for an explicit owner resend request. No automatic retries. "
+        "review-host [HOST|off] queries read-only, trusts one exact lower-case ASCII "
+        "device.tailnet.ts.net host, or disables review trust (default disabled). "
+        "It changes neither native config nor Telegram delivery policy and never sends. "
+        "attention --review-port N declares a port (1024..65535) for this invocation only; "
+        "requires at least one HTTPS root link to that exact configured host and port, "
+        "without credentials, query, fragment or escapes. GitHub links may accompany it. "
+        "Routine URL extraction is unchanged. Syntax validation does not prove reachability."
     ))
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
-    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention"))
-    parser.add_argument("value", nargs="?", help="verbosity level or delivery-policy preset")
-    parser.add_argument("--min-seconds", type=int, default=30)
+    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention", "review-host"))
+    parser.add_argument("value", nargs="?", help="verbosity level, delivery-policy preset, or review-host HOST|off")
+    parser.add_argument("--min-seconds", type=int)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
     parser.add_argument("--session", help="use one saved session for a no-send preview")
     parser.add_argument("--event", choices=("session_start", "turn_start", "completion", "error", "session_end"),
@@ -362,13 +378,20 @@ def main():
     parser.add_argument("--clear-session-filters", action="store_true", help="policy: clear explicit session filters")
     parser.add_argument("--key", help="attention: stable repository/decision/reviewed-revision identifier")
     parser.add_argument("--resend", action="store_true", help="attention: send again only when the owner explicitly requests it")
+    parser.add_argument("--review-port", type=review_port, help="attention only: declare exact trusted review port, 1024..65535")
     args = parser.parse_args()
+    if args.review_port is not None and (args.command != 'attention' or not 1024 <= args.review_port <= 65535):
+        parser.error('--review-port requires attention and an integer from 1024 through 65535')
+    if args.command == 'review-host' and (args.verbosity is not None or args.min_seconds is not None):
+        parser.error('review-host accepts only HOST or off, without alert options')
+    if args.min_seconds is None:
+        args.min_seconds = 30
     if args.command != "attention" and (args.key is not None or args.resend):
         parser.error("--key and --resend are only valid after attention")
     if args.command == "attention" and (not args.key or args.verbosity is not None):
         parser.error("attention requires --key and uses its own bounded layout, not --verbosity")
-    if args.value and args.command not in ("verbosity", "policy"):
-        parser.error("a positional value is only valid after verbosity or policy")
+    if args.value is not None and args.command not in ("verbosity", "policy", "review-host"):
+        parser.error("a positional value is only valid after verbosity, policy or review-host")
     if args.command == "verbosity" and args.value and args.value not in formatting.PROFILES:
         parser.error("choose brief, contextual, or expanded")
     if args.command == "policy" and args.value and args.value not in ("attention", "balanced", "activity"):
@@ -381,12 +404,21 @@ def main():
     if args.min_seconds < 0 or any(value is not None and not 0 <= value <= 86400
                                    for value in (args.cooldown_seconds, args.error_repeat_seconds)):
         parser.error("durations must be nonnegative; policy intervals cannot exceed 86400 seconds")
-    if args.session and args.command != "preview":
+    if args.session is not None and args.command != "preview":
         parser.error("--session is only valid for the no-send preview command")
     if args.event and args.command != "preview":
         parser.error("--event is only valid for the no-send preview command")
     if args.session and args.event not in (None, "completion"):
         parser.error("saved sessions can preview completion text only")
+    if args.command == 'review-host':
+        import alert_attention
+        try:
+            result = alert_attention.review_host(config_path().parent,
+                None if args.value == 'off' else args.value, write=args.value is not None)
+        except alert_attention.AttentionError as error:
+            raise SetupError(str(error)) from None
+        print(json.dumps(result, sort_keys=True))
+        return
     if args.command == "attention":
         import alert_attention
         try:
@@ -405,7 +437,8 @@ def main():
                     ) from None
 
             receipt = alert_attention.publish(config_path().parent, environment, request, args.key,
-                                              deliver, destination, secrets=(token, chat), resend=args.resend)
+                                              deliver, destination, secrets=(token, chat), resend=args.resend,
+                                              review_port=args.review_port)
         except alert_attention.AttentionError as error:
             raise SetupError(str(error)) from None
         print(json.dumps(receipt, sort_keys=True))
