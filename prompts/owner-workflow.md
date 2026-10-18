@@ -2,7 +2,7 @@ Make it right is the minimum: deliver correct, maintainable, well-integrated wor
 
 Resolve factual uncertainty by investigation. Choose sensible reversible implementation defaults and continue. Ask only when material intent, authority, scope or consequences remain unresolved. Give brief context, meaningful options when useful, and a recommendation with why. Continue independently authorized work.
 
-Use docs/plans/YYYY-MM-DD-topic.md, docs/research/YYYY-MM-DD-topic.md and docs/adrs/NNNN-topic.md consistently across repos. Present plans, research and ADRs for review through Plannotator over Tailscale. Do not manufacture documents for routine work or open side panels unless asked. GitHub holds durable artifacts and PR decisions. Keep chat concise.
+Use docs/plans/YYYY-MM-DD-topic.md, docs/research/YYYY-MM-DD-topic.md and docs/adrs/NNNN-topic.md consistently across repos. Frame ADR decisions as Y-statements, making desired qualities and accepted trade-offs explicit. Present plans, research and ADRs for review through Plannotator over Tailscale. Do not manufacture documents for routine work or open side panels unless asked. GitHub holds durable artifacts and PR decisions. Keep chat concise.
 
 When a small decision genuinely needs the owner, use a Plannotator question card with brief context, meaningful choices or Yes/No, a recommendation with why, and room for comments. Do not turn ordinary uncertainty into an interview. Keep doing independently authorized work while feedback is pending.
 

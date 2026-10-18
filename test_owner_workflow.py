@@ -24,7 +24,27 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         self.assertIsNotNone(match)
         description = match.group(1)
         self.assertLessEqual(len(description), 120)
-        self.assertTrue(description.startswith("Doc reviews and genuine owner-dependent choices:"))
+        self.assertTrue(description.startswith("ADR writing, doc reviews and owner-dependent choices:"))
+
+    def test_adr_y_statement_and_material_scope(self):
+        self.assertIn("Frame ADR decisions as Y-statements", self.overlay)
+        self.assertIn("desired qualities and accepted trade-offs explicit", self.overlay)
+        self.assertNotIn("<use case/user story>", self.overlay)
+        statement = (
+            "> In the context of <use case/user story>, facing <concern>, "
+            "we decided for <option> and neglected <other options>, "
+            "to achieve <system qualities/desired consequences>, "
+            "accepting <downside/undesired consequences>, because <additional rationale>."
+        )
+        self.assertIn(statement, self.skill)
+        self.require(self.skill, [
+            "new or substantively updated material ADRs", "open **Decision**",
+            "Keep **Status**", "supporting context/evidence",
+            "Name rejected alternatives and explain why", "replace every placeholder",
+            "Preserve historical ADRs unless a substantive change",
+            "Routine reversible choices remain implementation details",
+            "not new ADRs or approval gates",
+        ])
 
     def test_global_policy_and_preserved_attention_guardrails(self):
         self.require(self.overlay, [
