@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.6.0...v0.6.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* canonicalize review roots before Telegram confirmation ([#16](https://github.com/nephilus/jcode-telegram-alerts/issues/16)) ([a2e8eaf](https://github.com/nephilus/jcode-telegram-alerts/commit/a2e8eaf5d8ce9b5bf4871db3942cacbb4c76e748))
+
 ## [0.6.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.5.0...v0.6.0) (2026-10-18)
 
 
