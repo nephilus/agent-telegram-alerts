@@ -47,7 +47,7 @@ Use a dedicated virtual environment. Installation does not access Telegram or ch
 ```sh
 python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
 . "$HOME/.local/share/jcode-telegram-alerts/venv/bin/activate"
-python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.6.0"
+python -m pip install "git+https://github.com/nephilus/jcode-telegram-alerts.git@v0.6.1"
 jcode-telegram --version
 jcode-telegram preview
 jcode-telegram-hook install

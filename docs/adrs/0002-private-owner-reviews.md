@@ -1,7 +1,7 @@
 # ADR 0002: Private owner reviews without a core fork
 
 - Date: 2026-10-18
-- Status: Proposed record of the implementation authorized by the owner after reviewing assessment `65d18aa`. Review this document through Plannotator over Tailscale. This does not authorize unrelated infrastructure changes.
+- Status: Accepted. The owner authorized implementation after reviewing assessment `65d18aa`, then approved this implementation record through Plannotator over Tailscale on 2026-10-18 at revision `ae129dc1c0ff2d2c05802f16d3c63a604baab15c`. The returned decision matched the exact document snapshot. This does not authorize unrelated infrastructure changes.
 - Supersedes ADR 0001 only for its blanket non-443 attention-link restriction and absence of an operational review skill.
 
 ## Context

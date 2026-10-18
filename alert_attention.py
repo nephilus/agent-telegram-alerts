@@ -78,7 +78,12 @@ def _review_url(value, host, port, secrets):
     path = '/' if value.endswith('/') else ''
     if safe_url('https://' + host + path, secrets) is None:
         return None
-    return value
+    # Telegram normalizes an empty HTTPS path to '/'. Send that exact root
+    # spelling so strict entity confirmation need not accept changed targets.
+    canonical = 'https://' + authority + '/'
+    if _known(canonical, secrets) or _TOKEN.search(canonical):
+        return None
+    return canonical
 
 
 def read_request(stream):
