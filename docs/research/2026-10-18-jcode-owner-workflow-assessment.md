@@ -10,11 +10,21 @@
 
 1. Put the everyday nuances of ponytail, selective clarification and repo-based presentation into one short overlay. Do not paste entire skills into it.
 2. Keep deep grilling opt-in. Keep headless authentication and Plannotator procedures separate. Move habitual PR formatting into repository templates/conventions where practical.
-3. Use committed Markdown as the source of truth, Plannotator for review/question cards, and GitHub for durable links and PR approval. Stop opening side panels unless requested.
-4. Pilot one document review over Tailscale before deleting skills or adding an asynchronous Inbox. There is one concrete Telegram URL compatibility gap to fix.
+3. Keep plans, research and ADRs as repo Markdown and present them for review through Plannotator over Tailscale. Use GitHub for durable artifacts and PR approval, not as a substitute for document review. Stop opening side panels unless requested.
+4. Keep the demonstrated per-document review path. Fix the narrow Telegram URL compatibility gap before expanding into an asynchronous Inbox or deleting existing skills.
 5. Leave compaction alone initially. It does not make tool invocation or approval correlation reliable.
 
 No core patch, new summarizer, generic Telegram command router or mandatory interview framework is justified for this first step.
+
+### Owner review incorporated
+
+The first real tailnet review returned `approved` with three notes. This revision makes their effect explicit:
+
+1. **Document review:** plans, research and ADRs are Markdown in the owning repo and are presented through Plannotator over Tailscale, including the Proposed ADR itself.
+2. **Placement:** the short standing rules belong in the global `~/.jcode/prompt-overlay.md`. Repository conventions stay in that repo's `AGENTS.md`. One small on-demand `owner-review` skill holds the mechanical publishing/result-handling procedure. These are proposed destinations, not files installed by this assessment.
+3. **Small decisions:** the candidate overlay now explicitly triggers Plannotator question cards for genuine owner-dependent choices, with context, options, recommendation/reason and comments. Ordinary factual uncertainty and reversible implementation defaults still do not trigger a question.
+
+The comments are incorporated without treating approval of the assessment as permission to apply its proposals.
 
 ## 1. What Jcode already does
 
@@ -56,7 +66,7 @@ These are recommendations, not changes already made.
 | **Headless-links** | Retain for authentication/device-code workflows, with their real URL, expiry, browser and ambiguous-result safety rules. Do not treat it as a Telegram delivery mechanism. |
 | **PR skill** | Put the habitual summary/evidence/risk contract in each repo's existing PR template/conventions. Keep the visual-rich skill optional, or archive it after equivalent coverage exists. Do not copy its complete template globally. |
 | **Grill-me / grilling** | Retain as an explicit design stress-test. Do not globally import the requirement to interview through every decision branch before acting. Extract only investigate-first, material questions, meaningful options and a recommendation. |
-| **Plannotator** | Reuse the installed procedures on demand. Add only a short Jcode-specific handoff procedure if the pilot exposes a gap, not another general orchestration framework. |
+| **Plannotator** | Reuse its installed capabilities. Keep a short Jcode-specific `owner-review` procedure for publishing the real tailnet link, handling question cards and binding feedback to the originating revision. Do not paste the full Plannotator manual into the overlay. |
 
 Local inspected bodies were 592 words for ponytail, 1,045 for headless-links, 568 for PR and 3,951 for Plannotator. Those procedures belong on demand, not in an always-present overlay. The exposed grilling text explicitly treats all decisions as the owner's and waits for a fully resolved design tree, which conflicts with the desired everyday autonomy. Its upstream entry point is an alias to that workflow. [grilling]
 
@@ -67,12 +77,29 @@ Prefer the smallest complete solution that fits the existing code and convention
 
 Resolve factual uncertainty by investigation. Choose sensible reversible implementation defaults and continue. Ask only when material intent, authority, scope or consequences remain unresolved. Give brief context, meaningful options when useful, and a recommendation with why. Continue independently authorized work.
 
-Keep substantial plans, research and decisions as Markdown in the owning repo, following its conventions. Do not open side panels unless asked. Use Plannotator for requested document/question review and GitHub for PRs and durable artifacts. Keep chat concise.
+Keep plans, research and ADRs as Markdown in the owning repo and present them for review through Plannotator over Tailscale. Follow existing repo conventions; do not manufacture documents for routine work. Do not open side panels unless asked. GitHub holds durable artifacts and PR decisions. Keep chat concise.
 
-Before genuinely needing owner action, publish jcode-telegram attention with the exact request and a verified relevant action/review link. Major decisions need a committed Proposed ADR. Match any answer to its decision and reviewed revision; delivery, annotations and sign-in are not blanket approval. Keep tool-specific procedures in skills, not this overlay.
+When a small decision genuinely needs the owner, use a Plannotator question card with brief context, meaningful choices or Yes/No, a recommendation with why, and room for comments. Do not turn ordinary uncertainty into an interview. Keep doing independently authorized work while feedback is pending.
+
+Before genuinely needing owner action, publish jcode-telegram attention with the exact request and a verified relevant action/review link. Major decisions need a committed Proposed ADR reviewed in Plannotator. Match any answer to its decision and reviewed revision; delivery, annotations and sign-in are not blanket approval. Use the owner-review skill for the publishing and feedback procedure rather than expanding this overlay.
 ```
 
 This would **replace and streamline** the current attention block after agreement, not accumulate another overlapping block. Full grilling remains available when explicitly requested.
+
+### Where the rules live, and what "enforced" means
+
+| Layer | Proposed home | Responsibility |
+| --- | --- | --- |
+| Always-on owner preferences | Global `~/.jcode/prompt-overlay.md` | Smallest complete solution, autonomy/ask threshold, repo Markdown, no unsolicited panels, Plannotator review for plans/research/ADRs, question-card trigger and attention requirement. |
+| Project-specific convention | The owning repo's existing `AGENTS.md` | Existing `docs/adr/` versus `docs/adrs/`, numbering, PR template and any project-specific review authority. Do not duplicate the entire global policy in every repo. |
+| On-demand mechanics | `~/.jcode/skills/owner-review/SKILL.md` | A short procedure for one exact document/revision, native Tailscale publication, question-card syntax, verified URL, attention delivery outcome, private receipt and scoped feedback/cleanup. Reuse the installed Plannotator reference for uncommon flags. |
+| Durable work | Repo Markdown and Git commits | The plan, research, ADR or question context being reviewed, not a replacement for the always-on instructions. |
+
+**The overlay is the answer to "where will Jcode remember this?" A skill alone is not:** the always-on rule says when to invoke the procedure. The version-reviewed candidate above supplies the policy; adopting it would install the overlay and thin procedure together. This assessment has not done so. The ordinary native overlay reload path was exercised, not merely assumed. [assembly] [prompt-build]
+
+**Prompt guidance is not a hard execution lock.** It can steer the agent, but cannot guarantee every future call or override a custom SDK prompt. The publishing procedure can mechanically check the exact document hash, actual HTTPS URL, delivery result and review scope. A shell gate can reject failed/non-approved results for actions explicitly requiring approval. Neither should block every tool call or create a new core-wide approval engine.
+
+Do not change compaction to compensate for a missing trigger. Test adoption with two ordinary native tasks: a reversible implementation that finishes without asking, and a genuinely owner-only choice that opens a context/options/recommendation card. A document review is mandatory presentation, not necessarily a work-stopping approval gate. Pause only work dependent on an unresolved owner decision. Approved-with-notes feedback is guidance, not an automatic requirement for another approval round.
 
 ### Repository structure
 
@@ -110,6 +137,10 @@ The result-file parent must already exist and the target must be new. The CLI pu
 A Plannotator plan approval does not automatically authorize a PR merge, deployment or destructive command. For an actual GitHub PR decision, send the PR link and let its normal review/merge controls remain authoritative.
 
 ### Small decisions: use the existing question cards
+
+**Proposed trigger, now explicitly in the overlay:** after investigation, if a small unresolved choice still needs owner intent or authority, invoke `owner-review` to present a Plannotator card over Tailscale. This is not an instruction to ask about every uncertain fact, library choice or reversible implementation default. A small question can live in the relevant existing plan or a short Markdown decision note; it does not need an ADR.
+
+The thin procedure should: write the question's context/options/recommendation, start the existing annotation UI, verify its actual tailnet URL, publish attention once for that decision/revision, retain the originating process/receipt, then interpret the returned answer. Use non-blocking independent work while it is open. There is no custom OMP-style card framework to build.
 
 Plannotator already supports single choice, multiple choice and free text in Markdown. Yes/No is simply a two-choice question; an explicit recommendation can be shown with its reason. The reviewer can add a note or another answer. Do not build a replacement for OMP ask cards. [questions]
 
@@ -158,18 +189,22 @@ Inbox is worthwhile if holding a per-document gate open becomes inconvenient. It
 | Stage | Change | Acceptance before expanding |
 | --- | --- | --- |
 | **A. Preferences** | One lean overlay, repo Markdown, no unsolicited panels. Leave compaction and skills installed. | A normal task proceeds without unnecessary questions. A genuinely material ambiguity gets context/options/recommendation. An existing session observes the intended overlay. |
-| **B. One real review** | Reuse Plannotator CLI/question blocks and make the narrow explicit-attention URL fix. | From the owner's tailnet device: open the exact Telegram link, answer a question, approve/request changes/close, verify the correct originating session consumes only the intended result, reject stale revision/failed publication, and clean up only the owned mapping. Keep the host alive during the test. |
+| **B. Linked reviews and cards** | Reuse Plannotator CLI/question blocks and make the narrow explicit-attention URL fix. | Document review, result correlation and owned mapping cleanup are demonstrated. Still test the exact Telegram link and a returned small-decision answer, plus stale-revision/failed-publication refusal. Keep the host alive during review. |
 | **C. Consolidate** | Archive duplicate personal skills after checking effective registry/fresh-session behavior. Add Inbox MCP only if asynchronous questions are actually needed. | Explicit thread/session correlation, timeout behavior and stopped/resumed-session handling are demonstrated, not inferred. |
 
 No lower compaction threshold, forced interview, core fork, local LLM summarizer or new generic approval/command router is recommended now. When implementation is authorized, the material trust-boundary change should itself be recorded as a committed Proposed ADR rather than quietly widening URL policy.
 
 ## Verification and remaining limits
 
-**Observed:** exact-version source inspection, current installed CLI help/versions, privacy-safe Tailscale status reporting Running/online/DNS available, existing Serve mappings left untouched, installed helper URL-policy results, and two real native same-session overlay turns. The overlay probe used only a new scratch fixture, no tools in the child, and disabled notification hooks.
+**Observed:** exact-version source inspection, installed CLI help/versions, installed helper URL-policy results, and two real native same-session overlay turns. The overlay probe used only a new scratch fixture, no tools in the child, and disabled notification hooks.
 
-**Assessment-time limits:** before the owner's subsequent request to host this document, phone access, HTTPS certificate consent, live Plannotator approval/question return, mapping cleanup, Inbox MCP registration/wake, live Telegram replies and native compaction were not exercised. No actual approval or remote review URL was invented. Configuration, global overlay, skills, native core, credentials, polling and existing network mappings were not changed during research. The integration catalog was unavailable when recording the two already-installed tools, so inspection used their existing CLIs and primary sources instead. The separately requested document review may add an owned temporary Serve mapping, but does not apply these proposals.
+**Real document review completed:** the owner opened the native Plannotator tailnet review and returned `approved` with three notes through its result interface. The received result was bound to the exact reviewed Markdown hash and revision. HTTPS and `/api/plan` had verified that snapshot before handoff. The process exited `0`; its atomically published result was private `0600`. Native cleanup removed only the owned review endpoint, with every prior Serve setting preserved. No feedback or approval was synthesized by the agent. This closes the document-review return path, not the proposed small-decision or Telegram-delivery paths.
 
-Source-backed assessment is sufficient to recommend the pilot, not to claim the complete remote review workflow is already operational.
+Two startup issues were corrected without changing user settings: global `--browser` placed before `annotate` confused the strict-flag parser, so the command now uses `PLANNOTATOR_BROWSER=none`; an inherited occupied `PLANNOTATOR_PORT` was unset only for the new child, leaving the other session alone. The actual attention command rejected the real non-443 review URL with `No message sent`. No automatic resend or policy bypass was attempted.
+
+**Remaining limits:** small-decision card submission, inbox/MCP wake, live Telegram replies, the narrow URL-policy change, adoption of the candidate overlay/procedure and native compaction have not been exercised. Research did not change configuration, global instructions, skills, core, credentials, polling or prior Serve mappings. The requested review used only a temporary owned mapping that has now been cleaned up. The integration catalog was unavailable when recording the two already-installed tools, so inspection used their existing CLIs and primary sources instead.
+
+The real Markdown review works. That is not a claim that the full proposed attention/decision workflow is already installed or operational.
 
 ## Sources
 
