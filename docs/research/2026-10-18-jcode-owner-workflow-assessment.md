@@ -97,7 +97,7 @@ This repository already uses `docs/adr/`, so keep that singular spelling rather 
 2. Start one background-hosted invocation of the installed CLI, suppressing automatic browser launch:
 
 ```sh
-plannotator --browser none annotate docs/adr/NNNN-decision.md \
+PLANNOTATOR_BROWSER=none plannotator annotate docs/adr/NNNN-decision.md \
   --tailscale --gate --json --require-approval \
   --result-file /existing/private/directory/NEW-result.json
 ```
