@@ -13,6 +13,8 @@ Back up existing files privately. Replace the superseded attention block rather 
 
 The global overlay owns the make-it-right quality bar and the shared `docs/plans/`, `docs/research/` and `docs/adrs/` layout. Repo `AGENTS.md` supplies project facts and commands, not a competing folder standard. The old `docs/adr/0001-explicit-attention-alerts.md` path remains a compatibility pointer to preserve published links.
 
+For substantive replies, it asks for the practical outcome, why it matters and the main trade-off before implementation detail. It assumes a capable reader without project knowledge, not a beginner who needs every concept simplified. Requested technical depth, uncertainty and risks stay intact. It does not require ELI5 or TL;DR headings, extra explanation on routine completions, or new approval gates. The [approved change and bounded checks](plans/2026-10-20-plain-language-overlay.md) record the evidence and limits.
+
 Normal installed Jcode `v0.98.1` reread an edited overlay in a resumed-session acceptance check. That does not mean every SDK/custom prompt path does so. Skill catalogs can remain cached: use a fresh session for new discovery, or read the installed procedure path if the current catalog cannot load it. Do not reload all unrelated skills or reduce compaction just to find this one.
 
 ## Trust only the intended review host

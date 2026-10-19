@@ -28,7 +28,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
 
     def test_adr_y_statement_and_material_scope(self):
         self.assertIn("Frame ADR decisions as Y-statements", self.overlay)
-        self.assertIn("desired qualities and accepted trade-offs explicit", self.overlay)
+        self.assertIn("desired qualities and accepted trade-offs", self.overlay)
         self.assertNotIn("<use case/user story>", self.overlay)
         statement = (
             "> In the context of <use case/user story>, facing <concern>, "
@@ -48,10 +48,11 @@ class OwnerWorkflowTemplates(unittest.TestCase):
 
     def test_global_policy_and_preserved_attention_guardrails(self):
         self.require(self.overlay, [
-            "Make it right is the minimum", "Reuse existing code only when suitable",
+            "Make it right:", "Reuse suitable code",
             "repair or replace", "smallest coherent solution", "material intent, authority, scope",
             "docs/plans/YYYY-MM-DD-topic.md", "docs/research/YYYY-MM-DD-topic.md",
-            "docs/adrs/NNNN-topic.md", "plans, research and ADRs for review through Plannotator over Tailscale",
+            "docs/adrs/NNNN-topic.md", "Present documents that warrant owner review through Plannotator over Tailscale",
+            "Presentation is not a blanket approval gate",
             "side panels unless asked", "meaningful choices or Yes/No", "recommendation with why",
             "room for comments", "independently authorized work", "committed, published Proposed ADR",
             "Check receipt/failure", "stable key per reviewed decision/revision",
@@ -61,6 +62,19 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         ])
         self.assertNotIn("plannotator annotate", self.overlay)
         self.assertNotIn("--result-file", self.overlay)
+
+    def test_plain_language_preserves_depth_and_autonomy(self):
+        self.require(self.overlay, [
+            "Explain substantive replies to a capable reader who does not know this system",
+            "practical outcome or recommendation, why it matters, and the main trade-off",
+            "Describe what unfamiliar components do before naming them",
+            "concrete everyday language", "technical detail when requested or necessary",
+            "Preserve risks and uncertainty, and stay concise",
+            "Choose sensible reversible defaults and continue",
+            "Ask only when material intent, authority, scope or consequences remain unresolved",
+        ])
+        self.assertNotIn("ELI5", self.overlay)
+        self.assertNotIn("TL;DR", self.overlay)
 
     def test_native_command_is_non_strict_by_default(self):
         shell = re.search(r"```sh\n(.*?)\n```", self.skill, re.S).group(1)

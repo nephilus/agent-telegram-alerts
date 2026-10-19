@@ -1,6 +1,6 @@
-# Proposed overlay: explain what the decision means for you
+# Plain-language overlay: explain what the decision means for you
 
-**Status: Proposed, not installed.** Prepared October 20, 2026, local time (+08:00).
+**Status: Approved and installed.** Prepared October 20, 2026, local time (+08:00). The owner merged [proposal PR #20](https://github.com/nephilus/jcode-telegram-alerts/pull/20), then separately requested installation on October 19, 2026 at 20:19:42 UTC. The exact block below is now the live global overlay and source template. The comparisons below describe the earlier proposal, not a new approval request.
 
 ## Recommendation
 
@@ -25,9 +25,9 @@ The installed CLI is **Jcode v0.99.0, `774613c90751b6a26ae9eb6a27be6aff3f210062`
 
 I recommend one coherent replacement for ease of maintenance, not because testing proved that rewriting beats appending a paragraph. The append-only variant performed comparably. No new skill, summarizer, service, context-compaction setting or core fork is proposed.
 
-## Exact proposed overlay
+## Exact approved overlay
 
-**307 words**, compared with the current 297. This replaces only the overlay if installation is separately authorized. The base prompt and existing owner-review skill remain in place.
+**307 words**, compared with the previous 297. Installation replaced only the overlay. The base prompt and existing owner-review skill remain in place.
 
 ```text
 Make it right: deliver correct, maintainable, well-integrated work with the smallest coherent solution. Reuse suitable code, repair or replace it when needed, and avoid speculative features. Verify outcomes and state material limits.
@@ -74,9 +74,15 @@ The initial reviewer flagged a technical fragment's copyability and an unnecessa
 
 **Limits:** this is a small, single-model, supplied-fact study, not a human comprehension test or a statistically established improvement. It does not test long-running infrastructure work, compaction, unattended recovery or production alert delivery. The edit task explicitly excluded new approvals, so it does not prove the overlay will never over-ask. Some terms still appeared before a full explanation of their role. Your judgment of the explanation level remains the important check.
 
-## Review scope
+## Review scope and installation
 
-Please review whether the proposed wording and examples give you enough context to decide without decoding the machinery. Use **Send feedback** for comments. This review does not authorize installation, merging, deployment, a new service or infrastructure actions. The live overlay remains unchanged.
+The original review asked whether the wording and examples gave enough context to decide without decoding the machinery. Its approval covered the wording, not installation, deployment, a new service or infrastructure actions. Installation followed the owner's separate request after merging PR #20.
+
+The approved block was installed on October 19, 2026 at 20:23:43 UTC, after keeping a private rollback copy. Its SHA-256 is `64888f8092127602df949f87dae3de1215e65df35e1b323b4ca9c7547b4c621c`; the live file, source template and block above match exactly.
+
+Two actual Jcode v0.99.0 CLI turns then used the live global configuration, with the second resuming the first session. Neither supplied a custom system prompt. The first explained that a blocked image download prevented startup, described the narrow test-machine access being considered, and explicitly said no rule had been applied or startup verified. The resumed turn answered a precise Python request with the validation precondition, a secret check after URL normalization and exact echo comparison. These observed replies support the intended explanation level and retained technical depth, not a claim of universal comprehension or correctness.
+
+All 246 regression tests completed successfully with one skip. Locally built wheel and source archives contain the exact approved guidance asset. These are packaging checks, not a new published release. The two live checks disabled hooks for those child processes, so they did not send Telegram messages or exercise delivery. No core, compaction, skill, native Telegram or review-procedure change was needed.
 
 [base]: https://github.com/1jehuang/jcode/blob/774613c90751b6a26ae9eb6a27be6aff3f210062/crates/jcode-base/src/prompt/system_prompt.md
 [assembler]: https://github.com/1jehuang/jcode/blob/774613c90751b6a26ae9eb6a27be6aff3f210062/crates/jcode-base/src/prompt.rs#L481-L544
