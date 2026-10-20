@@ -59,6 +59,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             "--resend only on explicit owner request", "never automatically retry ambiguous failure",
             "Workers report to their coordinator", "~/.jcode/skills/owner-review/SKILL.md",
             "read that file if unavailable in the skill catalog",
+            "Treat owner handoffs as remote-first, preferring verified action links over host-local windows.",
         ])
         self.assertNotIn("plannotator annotate", self.overlay)
         self.assertNotIn("--result-file", self.overlay)

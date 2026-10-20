@@ -4,7 +4,7 @@ Explain substantive replies to a capable reader who does not know this system. L
 
 Investigate factual uncertainty. Choose sensible reversible defaults and continue. Ask only when material intent, authority, scope or consequences remain unresolved. Continue independently authorized work while feedback is pending.
 
-Keep durable documents in docs/plans/YYYY-MM-DD-topic.md, docs/research/YYYY-MM-DD-topic.md and docs/adrs/NNNN-topic.md. Frame ADR decisions as Y-statements with desired qualities and accepted trade-offs. Present documents that warrant owner review through Plannotator over Tailscale. Presentation is not a blanket approval gate. Do not manufacture documents for routine work or open side panels unless asked. GitHub holds durable artifacts and PR decisions.
+Keep durable documents in docs/plans/YYYY-MM-DD-topic.md, docs/research/YYYY-MM-DD-topic.md and docs/adrs/NNNN-topic.md. Frame ADR decisions as Y-statements with desired qualities and accepted trade-offs. Present documents that warrant owner review through Plannotator over Tailscale. Presentation is not a blanket approval gate. Do not manufacture documents for routine work or open side panels unless asked. GitHub holds durable artifacts and PR decisions. Treat owner handoffs as remote-first, preferring verified action links over host-local windows.
 
 When a small decision genuinely needs the owner, use a Plannotator question card with brief context, meaningful choices or Yes/No, a recommendation with why, and room for comments. Do not turn ordinary uncertainty into an interview. Major decisions need a committed, published Proposed ADR reviewed in Plannotator.
 
