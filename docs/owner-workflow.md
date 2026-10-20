@@ -46,6 +46,18 @@ The `owner-review` procedure describes the actual CLI invocation, private revisi
 
 Telegram gets attention. The answer belongs in Plannotator or the GitHub PR, not an uncorrelated Telegram Yes/No. An API acknowledgment is delivery evidence, not evidence the owner read or approved anything. No extra poller or automatic command execution is installed.
 
+## Optional Inbox pilot
+
+The owner chose **Questions only** for this repository's [bounded pilot](plans/2026-10-20-remote-first-inbox-pilot.md). Routine progress and completed-work summaries stay outside Inbox. This is not a cross-project default or permission for a permanent service. Approval-required reviews keep the existing document-review or GitHub route. These steps live in the repository checkout, not the wheel; the installed skill points back here.
+
+For an explicitly authorized use:
+
+1. Connect `plannotator inbox mcp` through Jcode's on-demand stdio connection. Set `PLANNOTATOR_INBOX_CONNECT=0` and `PLANNOTATOR_CWD` to this repository. Pass the originating `agent_session` and absolute `project_path` explicitly on message/reply calls. Do not add a persistent MCP entry or connect other agent products.
+2. Reuse a compatible Inbox, recording process ownership and existing Serve mappings. Publish with native `inbox --background --tailscale` for this run, not a saved Settings toggle. Require the configured exact review host and declared port, verify the real HTTPS root and intended project/question, then use the existing checked Telegram handoff. Do not forward a returned localhost URL or thread fragment.
+3. Ask only a genuine owner-dependent question, with context, choices, recommendation and room for a note. Save thread/message IDs, question revision, cursor and idempotency key privately. Keep working independently. Tell the owner to press **Send**, then resume this chat with **check my Inbox reply** if its turn has ended.
+4. Use native `wait_for_reply` with the saved IDs and `timeout_seconds=25` at a useful boundary. Pending is not permission; do not poll continuously. This Jcode client exposes the actual reply in that tool's text, whereas `read_thread` displays counts. Match the exact question/revision before applying its scoped answer. Acknowledged, skipped, empty or stale responses do not settle the question. No automatic wake is available.
+5. After resolution, preserve the messages and private receipt. Stop only the owned temporary process/publication, disconnect only the pilot MCP and verify other mappings remain intact. Never stop a reused service this pilot does not own.
+
 ## Boundaries and rollback
 
 Use native `--tailscale`, never Funnel or a replacement mapping on port 443. Keep its remote terminal disabled and preserve existing Serve mappings. The host and review process must remain alive. Native cleanup removes the owned endpoint on normal completion; inspect the exact owned port after interrupted reviews, never reset all Serve configuration.
