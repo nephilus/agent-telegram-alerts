@@ -1,6 +1,6 @@
 # Remote-first handoffs: a small Inbox pilot
 
-**Status: Approved; pilot awaiting the owner round trip.** October 20, 2026 (+08:00). The owner approved [the original execution revision][approved-revision]. The scope below is retained; observed results and remaining checks are recorded at the end.
+**Status: Bounded pilot closed; questions-only preference recorded.** October 20, 2026 (+08:00). The owner approved [the original execution revision][approved-revision]. The scope below is retained; observed results and untested cases are recorded at the end.
 
 ## Outcome and approval scope
 
@@ -58,7 +58,7 @@ Before implementation: exact reviewed commit/hash, scope and private backups. Af
 
 ## Execution record, October 20, 2026
 
-The approved 12-word sentence is installed. Source and live overlay match at 319 words; the rest of the overlay is byte-identical to its previous revision. A private rollback copy is retained. The Inbox is a temporary, run-only pilot with an on-demand MCP connection, not a new permanent service or cross-project default.
+The approved 12-word sentence is installed. Source and live overlay match at 319 words; the rest of the overlay is byte-identical to its previous revision. A private rollback copy is retained. The Inbox was a temporary, run-only pilot with an on-demand MCP connection. Its owned publication is now removed, not retained as a permanent service or cross-project default.
 
 | Requirement or output | Actual observation | Status |
 | --- | --- | --- |
@@ -68,18 +68,18 @@ The approved 12-word sentence is installed. Source and live overlay match at 319
 | Native publication boundary | Real HTTPS root returned 200. MCP, connection, bridge, device and agent-configuration routes returned 403 through that same endpoint. The second loopback listener rejected a missing login; a cross-site request was rejected. Existing Serve mappings were preserved, with no Funnel or manual proxy. | Passed; a distinct denied tailnet account was unavailable |
 | One question, not duplicate cards | The real native send created one question and attachment. Repeating the exact idempotency key returned the same thread; readback reported one message and no person reply. | Passed |
 | Pending without implied approval | The actual 25-second wait returned pending with a saved cursor. No answer was inferred. | Passed |
-| Useful action link | Chrome over the actual tailnet URL displayed this project, the question, both choices, recommendation, note composer and Send. No choice, note, acknowledgment or answer was submitted by the agent. One Telegram attention message was acknowledged with matching formatting. | Passed on the agent host; owner-device access still pending |
-| Owner choice and optional note | The real question is open. No fabricated reply or synthetic fixture replaces this check. | Pending owner interaction |
-| Reply after session resume | Exact originating session, project, thread/message, revision and cursor are retained privately for retrieval. A new owner reply after a real session resume has not yet been observed. | Pending |
-| Stale or unrelated responses | The question's authority is limited to this repository's presentation preference. No merge, deployment or production permission is inferred. Skipped, acknowledged or mismatched replies must not resolve it. | Return-path checks remain pending |
-| Minimal procedure update | No broader Inbox instructions or new skill have been installed before the real return path works. | Deliberately deferred |
-| Owned cleanup | Keep this temporary publication available while the question is open. Remove only the owned endpoint/process after resolution, retaining messages and comparing saved mappings. | Pending, not claimed complete |
+| Useful action link | Chrome over the actual tailnet URL displayed this project, the question, both choices, recommendation, note composer and Send. No choice, note, acknowledgment or answer was submitted by the agent. One Telegram attention message was acknowledged with matching formatting. | Passed on the agent host; separate-device provenance unconfirmed |
+| Owner choice and optional note | After the owner asked to check, native `wait_for_reply` returned the actual submitted answer: **Questions only**. No Note section was returned, so the optional-note path is not claimed tested. | Choice passed; note untested |
+| Reply after session resume | The originating Jcode session retrieved the saved thread/message with the saved cursor and explicit project/session. The returned question matched the recorded revision. No second question or Telegram send was needed. | Passed |
+| Stale or unrelated responses | Only the matching question's answer was applied, limited to this repository's presentation preference. No merge, deployment or production permission was inferred. A separate live superseded/mismatched-reply case was not exercised. | Matching scope checked; adversarial case untested |
+| Minimal procedure update | After the real return path passed, the existing procedure gained a short optional-Inbox reference and the workflow document gained the bounded questions-only steps. All 247 repository tests passed with one preexisting skip. Both real distribution archives contain byte-exact guidance. No new skill, wrapper or global Inbox default was added. | Passed |
+| Owned cleanup | Native archive/readback retained two messages, one from the person, with the thread resolved. Scoped termination stopped the owned Inbox and removed its publication; actual Serve settings exactly match the pre-pilot baseline. The pilot MCP connection is removed and its client exited. | Passed; exited client still awaits parent reaping |
 
 **Observed integration caveat:** this Jcode client currently displays `read_thread`'s count summary rather than its structured message content. The native `wait_for_reply` text includes the actual reply body, so the pilot uses that supported tool with its saved thread and cursor. Automatic wake is still not provided.
 
 **Settings qualification:** native first use added only Plannotator's version-specific sound-dialog marker. Removing that marker reconstructs the exact pre-pilot config hash, consistent with the pinned server's first-run code. A concurrent Jcode config byte change was also observed and preserved, not rolled back or attributed to this pilot. A contemporaneous before/after comparison around the native acceptance run showed identical parsed config, including hooks, notifications, safety and ambient settings, with no persistent pilot MCP entry. Do not interpret this as equality to every earlier baseline byte.
 
-The pilot is **not yet an end-to-end success**. Owner-device access, submitted choice/comment, resumed retrieval and final cleanup remain real acceptance conditions. Private receipts contain the live action URL and recovery instructions; no private host, session, token or receipt is published here.
+The actual submitted-choice and resumed-retrieval path worked. Another-device provenance is not exposed by the reply tool and has not been independently confirmed. The optional-note path, a live stale/superseded-reply case and a distinct denied tailnet login remain untested; no extra question is being created just to fill those gaps. The disconnected stdio client required scoped termination and left a non-running zombie entry awaiting its Jcode parent to reap; the parent was not stopped. Messages and private receipts are preserved, and the temporary link is no longer available. No private host, session, token or receipt is published here.
 
 [approved-revision]: https://github.com/nephilus/jcode-telegram-alerts/blob/a9aa62e98aa0a31432e03f08aaee86e3b2805b2b/docs/plans/2026-10-20-remote-first-inbox-pilot.md
 [assessment]: ../research/2026-10-20-remote-first-inbox-assessment.md

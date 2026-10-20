@@ -11,6 +11,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
     def setUpClass(cls):
         cls.overlay = (ROOT / "prompts/owner-workflow.md").read_text()
         cls.skill = (ROOT / "skills/owner-review/SKILL.md").read_text()
+        cls.workflow = (ROOT / "docs/owner-workflow.md").read_text()
 
     def require(self, text, phrases):
         for phrase in phrases:
@@ -110,6 +111,24 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             hosts = re.findall(r"[\w.-]+\.ts\.net", text)
             self.assertTrue(all(host == "device.tailnet.ts.net" for host in hosts))
             self.assertNotIn("\u2014", text)
+
+    def test_optional_inbox_remains_a_scoped_questions_only_pilot(self):
+        self.require(self.skill, [
+            "explicitly authorized pilot", "repository checkout's `docs/owner-workflow.md`",
+            "`jcode-telegram-alerts` pilot is questions-only",
+            "approval-required actions on the existing review route",
+            "No permanent service, automatic wake or cross-project default",
+        ])
+        self.require(self.workflow, [
+            "**Questions only**", "completed-work summaries stay outside Inbox",
+            "on-demand stdio", "PLANNOTATOR_INBOX_CONNECT=0", "PLANNOTATOR_CWD",
+            "`agent_session`", "`project_path`", "configured exact review host",
+            "localhost URL or thread fragment", "question revision, cursor and idempotency key",
+            "**Send**", "**check my Inbox reply**", "`timeout_seconds=25`",
+            "do not poll continuously", "exact question/revision",
+            "Acknowledged, skipped, empty or stale", "No automatic wake",
+            "Never stop a reused service this pilot does not own",
+        ])
 
 
 if __name__ == "__main__":

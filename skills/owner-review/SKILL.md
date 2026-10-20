@@ -5,7 +5,7 @@ description: "ADR writing, doc reviews and owner-dependent choices: publish scop
 
 # Owner review
 
-The global overlay supplies policy and triggers. This skill supplies mechanics, not a second policy copy. Reuse the installed Plannotator reference for uncommon flags and result/question schemas. Do not introduce a daemon, router or MCP service.
+The global overlay supplies policy and triggers. This skill supplies mechanics, not a second policy copy. Reuse the installed Plannotator reference for uncommon flags and result/question schemas. Do not introduce a router or permanent service.
 
 ## Prepare the scoped revision
 
@@ -63,3 +63,7 @@ For question answers or annotations, tell the owner to use **Send answers** or *
 Read this job's actual returned decision/answer and atomically published private result, checking exit status and publication success too. Exit 0, delivery receipts and API acknowledgements are not approval. An `annotated` answer may resolve its matching question but cannot approve a plan. Skipped, dismissed or empty responses remain unresolved. Strict actions require an explicit `approved` result for that exact scope/revision. A plan approval does not authorize merging, deployment or destructive actions.
 
 Before applying feedback, recompute the file hash and reject stale results on mismatch. Apply approved-with-notes clarifications without automatic re-review loops; changed material scope requires its own decision. Persist outcome and unresolved dependencies for the originating session. After completion verify native cleanup removed only the owned endpoint and preserved all other mappings. Report cleanup failures without broad reset commands.
+
+## Optional Inbox pilot
+
+For an explicitly authorized pilot, read its repository checkout's `docs/owner-workflow.md` before connecting. The `jcode-telegram-alerts` pilot is questions-only. Keep approval-required actions on the existing review route. No permanent service, automatic wake or cross-project default.
