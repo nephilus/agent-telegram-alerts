@@ -1,6 +1,6 @@
 ---
 name: owner-review
-description: "ADR writing, doc reviews and owner-dependent choices: publish scoped reviews and correlate feedback."
+description: "ADR writing, doc reviews and owner-dependent choices: Inbox questions, scoped reviews and correlated feedback."
 ---
 
 # Owner review
@@ -64,6 +64,6 @@ Read this job's actual returned decision/answer and atomically published private
 
 Before applying feedback, recompute the file hash and reject stale results on mismatch. Apply approved-with-notes clarifications without automatic re-review loops; changed material scope requires its own decision. Persist outcome and unresolved dependencies for the originating session. After completion verify native cleanup removed only the owned endpoint and preserved all other mappings. Report cleanup failures without broad reset commands.
 
-## Optional Inbox pilot
+## Inbox questions
 
-For an explicitly authorized pilot, read its repository checkout's `docs/owner-workflow.md` before connecting. The `jcode-telegram-alerts` pilot is questions-only. Keep approval-required actions on the existing review route. No permanent service, automatic wake or cross-project default.
+For owner-enabled projects, read [references/inbox.md](references/inbox.md) before connecting or retrieving replies. Read `plannotator inbox --help` for features. Questions only, not progress/completion summaries. Keep approval-required actions on the existing review route. No permanent service, automatic wake or cross-project default. Closed or held Inboxes stay off.

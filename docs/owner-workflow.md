@@ -4,10 +4,11 @@ This optional workflow keeps Jcode core and compaction unchanged. The reviewed s
 
 ## Adopt once, not in every repo
 
-Review the two templates before installing them. Their released copies are included under the virtual environment's `share/jcode-telegram-alerts/` directory:
+Review the overlay and procedure before installing them. Their packaged copies are included under the virtual environment's `share/jcode-telegram-alerts/` directory:
 
 - `prompts/owner-workflow.md` goes to `~/.jcode/prompt-overlay.md`.
 - `skills/owner-review/SKILL.md` goes to `~/.jcode/skills/owner-review/SKILL.md`.
+- Copy `skills/owner-review/references/inbox.md` beside it at `~/.jcode/skills/owner-review/references/inbox.md`. Preserve the relative layout so the installed procedure works without a repository checkout.
 
 Back up existing files privately. Replace the superseded attention block rather than appending overlapping rules, and preserve unrelated instructions. This companion setup is explicit: package or hook installation does not overwrite agent instructions automatically. Keep the prior release and backups for rollback.
 
@@ -46,9 +47,17 @@ The `owner-review` procedure describes the actual CLI invocation, private revisi
 
 Telegram gets attention. The answer belongs in Plannotator or the GitHub PR, not an uncorrelated Telegram Yes/No. An API acknowledgment is delivery evidence, not evidence the owner read or approved anything. No extra poller or automatic command execution is installed.
 
-## Optional Inbox pilot
+## How agents discover Inbox
 
-The owner chose **Questions only** for this repository's [bounded pilot](plans/2026-10-20-remote-first-inbox-pilot.md). Routine progress and completed-work summaries stay outside Inbox. This is not a cross-project default or permission for a permanent service. Approval-required reviews keep the existing document-review or GitHub route. These steps live in the repository checkout, not the wheel; the installed skill points back here.
+The overlay names Inbox only for genuine owner-dependent small decisions, and only when enabled. The existing `owner-review` skill advertises Inbox questions and loads its [packaged reference](../skills/owner-review/references/inbox.md) on demand. The native `plannotator inbox --help` supplies feature/tool details. No new skill, Jcode core change or large system-prompt manual is needed.
+
+This follows [Plannotator's documented pattern](https://plannotator.ai/docs/reference/inbox/): a tool connection, a short reminder and the agent guide. Jcode uses the generic stdio MCP route, not the Claude Code/Pi/OpenCode native integrations. Its replies require explicit retrieval rather than automatic wake.
+
+Enablement requires an explicit owner/project instruction permitting Inbox startup. Installation is not enablement. Do not register an always-on MCP entry just to advertise the feature: the installed 0.28.23 shim starts a stopped Inbox even during initialization/tool discovery. A closed or held service must remain off, without a discovery smoke test. When enabled, connect on demand with the explicit project/session attribution in the reference. This awareness change alone neither starts Inbox nor adopts it across projects.
+
+## Closed pilot and authorized future use
+
+The owner chose **Questions only** for this repository's [bounded pilot](plans/2026-10-20-remote-first-inbox-pilot.md). That pilot is closed and stays off unless explicitly re-enabled. Routine progress and completed-work summaries stay outside Inbox. This is not a cross-project default or permission for a permanent service. Approval-required reviews keep the existing document-review or GitHub route. The installed skill now includes the connection/reply procedure, with no checkout dependency. The steps below retain the pilot-specific observations.
 
 For an explicitly authorized use:
 
