@@ -2,6 +2,8 @@
 
 Date: 2026-10-21
 
+**Later owner decision, 2026-10-21 16:10 UTC:** enable Inbox globally and install its MCP if needed. The per-use connection restriction below records the earlier assessment, not the current setup. The [global native adoption instructions](../owner-workflow.md#global-native-mcp-authorized-2026-10-21) supersede it. Questions-only scope, explicit reply retrieval and unrelated operational holds remain unchanged.
+
 ## Recommendation
 
 Use a short conditional cue in the existing overlay, advertise Inbox questions in the existing `owner-review` skill, and keep connection/reply instructions in its packaged reference. Connect the native stdio MCP server only for authorized Inbox use. Do not add a second skill, always-on server, custom adapter or automatic wake loop.
