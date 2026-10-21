@@ -1,6 +1,8 @@
 """Offline template contracts, not live review/Telegram acceptance tests."""
 from pathlib import Path
+import json
 import re
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parent
@@ -12,6 +14,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         cls.overlay = (ROOT / "prompts/owner-workflow.md").read_text()
         cls.skill = (ROOT / "skills/owner-review/SKILL.md").read_text()
         cls.workflow = (ROOT / "docs/owner-workflow.md").read_text()
+        cls.inbox = (ROOT / "skills/owner-review/references/inbox.md").read_text()
 
     def require(self, text, phrases):
         for phrase in phrases:
@@ -26,6 +29,8 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         description = match.group(1)
         self.assertLessEqual(len(description), 120)
         self.assertTrue(description.startswith("ADR writing, doc reviews and owner-dependent choices:"))
+        self.assertIn("Inbox questions", description)
+        self.assertLessEqual(len(self.inbox.split()), 600)
 
     def test_adr_y_statement_and_material_scope(self):
         self.assertIn("Frame ADR decisions as Y-statements", self.overlay)
@@ -105,20 +110,23 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         ])
 
     def test_templates_have_no_private_paths_or_real_hosts(self):
-        for text in (self.overlay, self.skill):
+        for text in (self.overlay, self.skill, self.inbox):
             self.assertNotRegex(text, r"/(?:home|Users|tmp)/")
             self.assertNotRegex(text, r"https?://")
             hosts = re.findall(r"[\w.-]+\.ts\.net", text)
             self.assertTrue(all(host == "device.tailnet.ts.net" for host in hosts))
             self.assertNotIn("\u2014", text)
 
-    def test_optional_inbox_remains_a_scoped_questions_only_pilot(self):
+    def test_inbox_discovery_preserves_questions_only_opt_in(self):
+        self.assertIn("prefer Plannotator Inbox when enabled, otherwise a question card", self.overlay)
         self.require(self.skill, [
-            "explicitly authorized pilot", "repository checkout's `docs/owner-workflow.md`",
-            "`jcode-telegram-alerts` pilot is questions-only",
+            "owner-enabled projects", "[references/inbox.md](references/inbox.md)",
+            "`plannotator inbox --help`", "Questions only, not progress/completion summaries",
             "approval-required actions on the existing review route",
             "No permanent service, automatic wake or cross-project default",
+            "Closed or held Inboxes stay off",
         ])
+        self.assertNotIn("repository checkout's", self.skill)
         self.require(self.workflow, [
             "**Questions only**", "completed-work summaries stay outside Inbox",
             "on-demand stdio", "PLANNOTATOR_INBOX_CONNECT=0", "PLANNOTATOR_CWD",
@@ -128,7 +136,42 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             "do not poll continuously", "exact question/revision",
             "Acknowledged, skipped, empty or stale", "No automatic wake",
             "Never stop a reused service this pilot does not own",
+            "Installation is not enablement", "without a discovery smoke test",
         ])
+
+    def test_inbox_reference_does_not_start_discovery_during_hold(self):
+        self.require(self.inbox, [
+            "owner or project instructions explicitly permit Inbox use and startup",
+            "An installed binary, visible tool or this skill alone is not permission",
+            "operational hold stays off until explicitly released",
+            "Do not connect, run `jcode mcp test`",
+            "even MCP initialization and tool listing start it",
+            "Do not add permanent MCP configuration",
+            "actual originating `agent_session` and absolute `project_path`",
+            "**no automatic wake**", "`timeout_seconds=25`", "Do not poll continuously",
+            "actual returned reply text", "exact question/revision",
+            "Acknowledged, skipped, empty or stale", "Workers report to their coordinator",
+            "Never stop a reused service you do not own",
+        ])
+
+    def test_inbox_connection_example_is_on_demand_and_project_explicit(self):
+        example = re.search(r"```json\n(.*?)\n```", self.inbox, re.S).group(1)
+        connection = json.loads(example)
+        self.assertEqual(connection["action"], "connect")
+        self.assertEqual(connection["args"], ["inbox", "mcp"])
+        self.assertEqual(connection["env"]["PLANNOTATOR_INBOX_CONNECT"], "0")
+        self.assertEqual(connection["env"]["PLANNOTATOR_CWD"], "ABSOLUTE_PROJECT_PATH")
+        self.assertEqual(connection["env"]["PLANNOTATOR_AI"], "disabled")
+        self.assertNotIn("url", connection)
+
+    def test_installed_skill_reference_is_declared_as_a_package_asset(self):
+        config = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        assets = config["tool"]["setuptools"]["data-files"]
+        destination = "share/jcode-telegram-alerts/skills/owner-review/references"
+        reference = "skills/owner-review/references/inbox.md"
+        self.assertEqual(assets[destination], [reference])
+        self.assertTrue((ROOT / reference).is_file())
+        self.assertIn("~/.jcode/skills/owner-review/references/inbox.md", self.workflow)
 
 
 if __name__ == "__main__":
