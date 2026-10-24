@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.6.1...v0.7.0) (2026-10-24)
+
+
+### Features
+
+* add opt-in Clef completion filtering and private PIR evidence ([#29](https://github.com/nephilus/jcode-telegram-alerts/issues/29)) ([bda1a7b](https://github.com/nephilus/jcode-telegram-alerts/commit/bda1a7b776da864202bbf4c64ccf1bdd08094404))
+
 ## [0.6.1](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.6.0...v0.6.1) (2026-10-18)
 
 
