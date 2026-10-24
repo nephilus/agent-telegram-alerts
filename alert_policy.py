@@ -31,7 +31,7 @@ DEFAULT_POLICY = {
     'version': 1, 'preset': 'balanced', 'events': PRESETS['balanced'],
     'cooldown_seconds': 300, 'error_repeat_seconds': 300, 'status_card': False,
     'silent_events': ['session_start', 'turn_start', 'session_end'],
-    'include_sessions': [], 'exclude_sessions': [],
+    'include_sessions': [], 'exclude_sessions': [], 'completion_selector': 'off',
 }
 MAX_SETTINGS_BYTES = 8192
 MAX_STATE_BYTES = 524288
@@ -73,6 +73,8 @@ def _validate(value):
             raise ValueError('Invalid seconds')
     if type(result['status_card']) is not bool:
         raise ValueError('Invalid status card')
+    if result['completion_selector'] not in ('off', 'clef'):
+        raise ValueError('Invalid completion selector')
     for key in ('silent_events', 'include_sessions', 'exclude_sessions'):
         items = result[key]
         if not isinstance(items, list) or len(items) > 128:
@@ -292,10 +294,10 @@ def _message_id(value):
     return type(value) is int and 0 < value <= 2**52 - 1
 
 
-def _message(rendered, verbosity, grouped):
+def _message(rendered, verbosity, grouped, selected=False):
     if not isinstance(rendered, dict) or not isinstance(rendered.get('text'), str) or not 0 < len(rendered['text']) <= 65536:
         raise ValueError('Invalid rendering')
-    profile = PROFILES[verbosity]
+    profile = {'words': 600, 'chars': 4096} if selected else PROFILES[verbosity]
     suffix = f'\n\nGrouped: {grouped} earlier completions.' if grouped else ''
     original = rendered['text']
     supplied = rendered.get('entities', [])
@@ -336,11 +338,14 @@ def _message(rendered, verbosity, grouped):
                                              or safe_url(entity['url']) != entity['url']):
             continue
         valid.append(dict(entity))
+    if utf16_length(text + suffix) > 4096:
+        raise ValueError('Telegram text limit exceeded')
     return {'text': text + suffix, 'entities': valid, 'link_preview_options': {'is_disabled': True}}
 
 
 def notify(home, environment, render, deliver, destination_fingerprint,
-           verbosity='expanded', min_seconds=30, policy=None, now=None):
+           verbosity='expanded', min_seconds=30, policy=None, now=None,
+           selector_authorized=False):
     """Make one serialized delivery decision. Callbacks execute inside the lock.
 
     deliver returns the TelegramMessage itself, not an API envelope. Unconfirmed
@@ -378,6 +383,9 @@ def notify(home, environment, render, deliver, destination_fingerprint,
             return finish('invalid_policy')
         if not config['events'][kind] or session in config['exclude_sessions'] or (config['include_sessions'] and session not in config['include_sessions']):
             return finish('disabled')
+        selected = kind == 'completion' and config['completion_selector'] == 'clef'
+        if selected and selector_authorized is not True:
+            return finish('selector_required')
         if kind == 'completion' and not config['status_card']:
             duration = environment.get('JCODE_HOOK_DURATION_MS', '0')
             if type(duration) not in (str, int):
@@ -407,14 +415,14 @@ def notify(home, environment, render, deliver, destination_fingerprint,
             if error in errors and now - errors[error] < config['error_repeat_seconds']:
                 _write(folder, STATE_FILE, state, MAX_STATE_BYTES)
                 return finish('suppressed_repeat_error')
-            grouped = entry.get('grouped', 0) if kind == 'completion' else 0
+            grouped = entry.get('grouped', 0) if kind == 'completion' and not selected else 0
             receipt['grouped'] = grouped
             card = entry.get('card')
             matching_card = card if card and card['destination'] == destination else None
             method = 'editMessageText' if config['status_card'] and matching_card and kind != 'error' else 'sendMessage'
             try:
                 rendered = render()
-                message = _message(rendered, verbosity, grouped)
+                message = _message(rendered, verbosity, grouped, selected=selected)
                 receipt['prompt_available'] = rendered.get('prompt_available') is True
                 receipt['method'] = method
                 receipt.update(words=len(message['text'].split()), characters=len(message['text']),

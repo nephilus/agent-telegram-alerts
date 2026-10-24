@@ -245,6 +245,44 @@ def event_message(environment, verbosity="expanded"):
     return formatting.render_lifecycle_message(environment, verbosity, alert_secrets(), session_name=name)
 
 
+def selected_completion(home, environment, token, chat, destination, verbosity, stored):
+    """Only the Clef yes branch may reach ordinary completion delivery."""
+    import alert_policy
+    import alert_selector
+    sid = environment.get("JCODE_HOOK_SESSION_ID", "")
+    if (not stored["events"]["completion"] or sid in stored["exclude_sessions"]
+            or (stored["include_sessions"] and sid not in stored["include_sessions"])):
+        return {"state": "disabled", "kind": "completion"}
+    try:
+        context = formatting.selector_context(home, environment, (token, chat),
+                                             allow_fork=sid in stored["include_sessions"])
+    except (OSError, ValueError, TypeError, RecursionError) as error:
+        allowed = {"source_unavailable", "source_oversize", "internal_session", "internal_turn", "stale_source", "empty_source"}
+        reason = error.args[0] if isinstance(error, ValueError) and error.args and error.args[0] in allowed else "source_unavailable"
+        return {"state": "selector_skipped", "kind": "completion", "selector_reason": reason}
+
+    def selected_deliver(*, secrets=()):
+        # An off command completes only after an already-admitted send ends.
+        # Never send using stale policy captured before a model request.
+        with alert_policy._directory(home, create=True) as folder, alert_policy._locked(folder, ".telegram-policy-config.lock"):
+            current = alert_policy.load_policy(home)
+            if current["completion_selector"] != "clef":
+                return {"state": "disabled", "kind": "completion"}
+            selected = {**current, "cooldown_seconds": 0, "status_card": False}
+
+            def deliver(method, body):
+                return api(token, method, {**body, "chat_id": chat})
+
+            return alert_policy.notify(home, context["environment"],
+                lambda: formatting.render_selected_message(context["environment"], secrets,
+                                                            session_name=context["session_name"]),
+                deliver, destination, verbosity=verbosity, min_seconds=0,
+                policy=selected, selector_authorized=True)
+
+    return {**alert_selector.process(home, context["turn"], selected_deliver, secrets=(token, chat)),
+            "kind": "completion"}
+
+
 def observe_event(environment, min_seconds=30, verbosity="expanded"):
     """Best-effort observer: never reveal exceptions or mutate native settings."""
     if environment.get("JCODE_HOOK_EVENT") not in ("session_start", "turn_start", "turn_end", "session_end"):
@@ -266,9 +304,16 @@ def observe_event(environment, min_seconds=30, verbosity="expanded"):
                 raise SetupError("Unsupported notification operation.")
             return api(token, method, {**body, "chat_id": chat})
 
-        receipt = alert_policy.notify(config_path().parent, environment,
-                                      lambda: event_message(environment, verbosity), deliver,
-                                      destination, verbosity=verbosity, min_seconds=min_seconds)
+        home = config_path().parent
+        policy = alert_policy.load_policy(home)
+        if (environment.get("JCODE_HOOK_EVENT") == "turn_end"
+                and environment.get("JCODE_HOOK_STATUS") == "ok"
+                and policy["completion_selector"] == "clef"):
+            receipt = selected_completion(home, environment, token, chat, destination, verbosity, policy)
+        else:
+            receipt = alert_policy.notify(home, environment,
+                                          lambda: event_message(environment, verbosity), deliver,
+                                          destination, verbosity=verbosity, min_seconds=min_seconds)
         receipt = dict(receipt)
         state = receipt.pop("state")
         record_receipt(state, **receipt)
@@ -323,7 +368,7 @@ def record_receipt(state, **metadata):
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "recorded_at_ns": time.time_ns(),
             "session_fingerprint": hashlib.sha256(os.environ.get("JCODE_HOOK_SESSION_ID", "").encode()).hexdigest()[:16],
-            **{key: metadata[key] for key in ("kind", "grouped", "method", "verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "link_entities", "formatting_confirmed") if key in metadata},
+            **{key: metadata[key] for key in ("kind", "grouped", "method", "verbosity", "words", "characters", "telegram_message_id", "text_fingerprint", "response_confirmed", "prompt_available", "bold_entities", "link_entities", "formatting_confirmed", "selector_choice", "selector_reason", "pir_count", "pir_ready") if key in metadata},
         }) + "\n"
         kind = metadata.get("kind")
         if kind in ("session_start", "turn_start", "completion", "error", "session_end"):
@@ -358,7 +403,7 @@ def main():
         "Routine URL extraction is unchanged. Syntax validation does not prove reachability."
     ))
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
-    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention", "review-host"))
+    parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention", "review-host", "selector"))
     parser.add_argument("value", nargs="?", help="verbosity level, delivery-policy preset, or review-host HOST|off")
     parser.add_argument("--min-seconds", type=int)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
@@ -379,7 +424,21 @@ def main():
     parser.add_argument("--key", help="attention: stable repository/decision/reviewed-revision identifier")
     parser.add_argument("--resend", action="store_true", help="attention: send again only when the owner explicitly requests it")
     parser.add_argument("--review-port", type=review_port, help="attention only: declare exact trusted review port, 1024..65535")
+    parser.add_argument("--endpoint", help="selector on: existing HTTPS decision API origin")
+    parser.add_argument("--key-file", help="selector on: absolute existing owner-only API key file")
+    parser.add_argument("--model", help="selector on: maintained request model or alias")
+    parser.add_argument("--response-model", help="selector on: required exact response backend identity")
+    parser.add_argument("--pir-turns", type=int, help="selector on: bounded private review sample, default 100")
     args = parser.parse_args()
+    selector_options = (args.endpoint, args.key_file, args.model, args.response_model, args.pir_turns)
+    if any(value is not None for value in selector_options) and (args.command != "selector" or args.value != "on"):
+        parser.error("selector connection options require selector on")
+    if args.command == "selector" and (args.value not in (None, "on", "off") or args.verbosity is not None or args.min_seconds is not None):
+        parser.error("selector accepts on, off, or a read-only query")
+    if args.command == "selector" and args.value == "on" and not all((args.endpoint, args.key_file, args.model, args.response_model)):
+        parser.error("selector on requires --endpoint, --key-file, --model and --response-model")
+    if args.pir_turns is not None and not 1 <= args.pir_turns <= 100:
+        parser.error("--pir-turns must be from 1 through 100")
     if args.review_port is not None and (args.command != 'attention' or not 1024 <= args.review_port <= 65535):
         parser.error('--review-port requires attention and an integer from 1024 through 65535')
     if args.command == 'review-host' and (args.verbosity is not None or args.min_seconds is not None):
@@ -390,8 +449,8 @@ def main():
         parser.error("--key and --resend are only valid after attention")
     if args.command == "attention" and (not args.key or args.verbosity is not None):
         parser.error("attention requires --key and uses its own bounded layout, not --verbosity")
-    if args.value is not None and args.command not in ("verbosity", "policy", "review-host"):
-        parser.error("a positional value is only valid after verbosity, policy or review-host")
+    if args.value is not None and args.command not in ("verbosity", "policy", "review-host", "selector"):
+        parser.error("a positional value is only valid after verbosity, policy, review-host or selector")
     if args.command == "verbosity" and args.value and args.value not in formatting.PROFILES:
         parser.error("choose brief, contextual, or expanded")
     if args.command == "policy" and args.value and args.value not in ("attention", "balanced", "activity"):
@@ -410,6 +469,24 @@ def main():
         parser.error("--event is only valid for the no-send preview command")
     if args.session and args.event not in (None, "completion"):
         parser.error("saved sessions can preview completion text only")
+    if args.command == "selector":
+        import alert_policy
+        import alert_selector
+        home = config_path().parent
+        if args.value == "on":
+            alert_selector.configure(home, endpoint=args.endpoint, key_file=args.key_file,
+                                     model=args.model, expected_model=args.response_model,
+                                     pir_turns=100 if args.pir_turns is None else args.pir_turns)
+            alert_policy.save_policy(home, {"completion_selector": "clef", "events": {"completion": True}})
+        elif args.value == "off":
+            # Disabling must never restore the unfiltered completion stream.
+            alert_policy.save_policy(home, {"completion_selector": "off", "events": {"completion": False}})
+        result = alert_selector.status(home)
+        policy = alert_policy.load_policy(home)
+        print(json.dumps({**result, "enabled": result.get("configured") is True and policy["completion_selector"] == "clef" and policy["events"]["completion"],
+                          "mode": policy["completion_selector"],
+                          "completion_enabled": policy["events"]["completion"]}, sort_keys=True))
+        return
     if args.command == 'review-host':
         import alert_attention
         try:
@@ -499,6 +576,7 @@ def main():
         import alert_policy
         policy = alert_policy.load_policy(config_path().parent)
         print(f"Delivery policy: {policy['preset']}, completion interval {policy['cooldown_seconds']}s per session")
+        print("Completion selector: " + policy["completion_selector"])
         print("Status card: " + ("on" if policy["status_card"] else "off"))
         print("Completion hook: " + ("installed" if "jcode-telegram" in str(load_config().get("hooks", {}).get("turn_end", "")) else "not installed"))
         try:
