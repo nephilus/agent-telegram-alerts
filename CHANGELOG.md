@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.7.0...v0.8.0) (2026-10-24)
+
+
+### Features
+
+* identify the originating chat in Telegram alerts ([#31](https://github.com/nephilus/jcode-telegram-alerts/issues/31)) ([34aa390](https://github.com/nephilus/jcode-telegram-alerts/commit/34aa390227162cc0d80afdf2f20bf94b35eeca67))
+
 ## [0.7.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.6.1...v0.7.0) (2026-10-24)
 
 
