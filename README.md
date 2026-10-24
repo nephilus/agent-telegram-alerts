@@ -24,7 +24,7 @@
 Illustrative expanded alert:
 
 > ✅ **Jcode turn finished**<br>
-> 🏷 **Session:** Storage migration<br>
+> 🏷 **Session:** Storage migration [snail]<br>
 > 📁 ~/workspace/example-project · 1m 35s
 >
 > 💬 **Asked:**<br>
@@ -92,18 +92,26 @@ Durations use minutes and seconds, such as `1m 35s` and `61m 1s`, rounded to the
 
 `Asked` remains useful when a request is safely matched to the successful turn. It is omitted entirely when no usable request context is available, instead of spending space on a context-unavailable placeholder. In brief alerts, the result takes priority over the request excerpt. Request matching is not weakened to fill an empty section.
 
-### Meaningful saved session names
+### Identify the originating chat
 
-If you explicitly rename a session or save it with a name, an optional `🏷 Session: Storage migration` line appears above the folder in qualifying completion/error alerts, enabled lifecycle alerts and saved-session previews. The helper follows Jcode's explicit-name precedence: `custom_title`, then `save_label` only when `saved` is true. Automatic generated summaries, animal names and raw session IDs are not used as fallbacks. Missing/unreadable metadata adds no placeholder.
+Alerts with a valid native session ID show the same `🏷 Session:` line in selected updates, completion/error alerts, enabled lifecycle alerts, saved-session previews and explicit **Needs you** messages:
+
+- Named chat: `Storage migration [snail]`.
+- Unnamed chat: its native short name, such as `snail`.
+- Unavailable or unsafe metadata: a stable `chat-` identifier derived from the session ID, such as `chat-12ab34cd`. This is a display label, not an argument accepted by Jcode's CLI.
+
+The title follows Jcode's explicit-name precedence: `custom_title`, then `save_label` only when `saved` is true. Generated summaries are not used. The short name identifies the chat even when several agents share a working folder. These are originating-chat labels, not proof of the last repository edited or the current task branch.
 
 Rename through Jcode's normal interface or its native CLI, then preview without sending:
 
 ```sh
-jcode session rename SESSION_ID "Storage migration"
+jcode session rename snail "Storage migration"
 jcode-telegram preview --session SESSION_ID
 ```
 
-Names are read again for each rendered alert, so subsequent renames need no helper restart. The line stays single-line and is redacted before shortening: brief allows 2 words / 40 characters, contextual 5 / 80, expanded 8 / 120, within the existing whole-alert caps. Paths in names remain redacted, unlike the intentional folder metadata exception. A meaningful name supplements the working folder, not replaces it. Avoid confidential names because this metadata is forwarded to your configured Telegram destination.
+Use the full session ID for the preview. Names are read again for each alert, including native journal updates, so renaming or clearing a title needs no helper restart. Snapshot reads are bounded to 128 MiB and journals to 32 MiB. Unreadable, oversized or malformed metadata falls back to the short session-ID label rather than guessing a title.
+
+The line is single-line and redacted before shortening. Brief allows 2 words / 40 characters, contextual 5 / 80, expanded 8 / 120, within the existing whole-alert caps. A title is shortened first so the identifying suffix survives. Paths in titles remain redacted. Avoid confidential titles because this metadata is forwarded to your configured Telegram destination. This display change does not alter Clef's selection rules, cooldowns or explicit-attention delivery.
 
 **Privacy:** the folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
 

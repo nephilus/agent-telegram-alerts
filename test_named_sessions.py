@@ -136,7 +136,7 @@ class NamedSessionTests(unittest.TestCase):
             self.assertIn("Meaningful new name", app.alert_message(event())["text"])
             self.assertNotIn("Storage migration", app.alert_message(event())["text"])
             saved(home, custom_title=None, saved=False, title="Auto summary", short_name="animal")
-            self.assertNotIn("Session:", app.alert_message(event(JCODE_HOOK_SESSION_NAME="UNTRUSTED_ENV"))["text"])
+            self.assertIn("🏷 Session: animal\n", app.alert_message(event(JCODE_HOOK_SESSION_NAME="UNTRUSTED_ENV"))["text"])
             self.assertNotIn("UNTRUSTED_ENV", app.alert_message(event(JCODE_HOOK_SESSION_NAME="UNTRUSTED_ENV"))["text"])
             network.assert_not_called()
             self.assertFalse(app.receipt_path().exists())

@@ -99,7 +99,10 @@ class SelectorIntegrationTests(unittest.TestCase):
         self.environment["JCODE_HOOK_LAST_ASSISTANT_TEXT"] = long[:4000]
         context = fmt.selector_context(self.home, self.environment)
         self.assertIn("Needs you: review", context["turn"]["current_public_final"])
-        self.assertEqual(context["session_name"], "Meaningful work")
+        self.assertEqual(context["session_name"], {"title": "Meaningful work", "short_name": "automatic-animal", "session_id": self.sid})
+        self.assertNotIn("session_name", context["turn"])
+        self.assertNotIn("short_name", context["turn"])
+        self.assertNotIn("custom_title", context["turn"])
         self.assertEqual(context["turn"]["links"][0]["url"], "https://github.com/example/repo/pull/42")
         self.assertEqual(context["environment"]["JCODE_HOOK_LAST_ASSISTANT_TEXT"], long)
 
@@ -156,7 +159,7 @@ class SelectorIntegrationTests(unittest.TestCase):
         body = self.calls[0][1]
         self.assertIn(fmt.sanitize(response), body["text"])
         self.assertIn("Service rollout", body["text"])
-        self.assertNotIn("automatic-animal", body["text"])
+        self.assertIn("Service rollout [automatic-animal]", body["text"])
         self.assertEqual([e["url"] for e in body["entities"] if e["type"] == "text_link"], ["https://github.com/example/repo/pull/42"])
         self.assertTrue(body["link_preview_options"]["is_disabled"])
 
@@ -178,6 +181,7 @@ class SelectorIntegrationTests(unittest.TestCase):
         self.assertTrue(result["formatting_confirmed"])
         self.assertEqual(result["link_entities"], 0)
         self.assertEqual(result["bold_entities"], 1)
+        self.assertIn("🏷 Session: automatic-animal\n", self.calls[0][1]["text"])
 
     def test_selected_success_bypasses_old_duration_and_cooldown_only_for_completions(self):
         self.enable()
@@ -234,6 +238,7 @@ class SelectorIntegrationTests(unittest.TestCase):
             app.main()
         self.assertEqual(len(self.calls), 1)
         self.assertIn("Choose option A or B", self.calls[0][1]["text"])
+        self.assertIn("🏷 Session: automatic-animal\n", self.calls[0][1]["text"])
 
     def test_selector_cli_queries_read_only_and_off_never_restores_unfiltered_pushes(self):
         self.enable()
