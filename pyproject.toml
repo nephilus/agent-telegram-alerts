@@ -36,7 +36,7 @@ jcode-telegram = "jcode_telegram:cli"
 jcode-telegram-hook = "hook_install:cli"
 
 [tool.setuptools]
-py-modules = ["jcode_telegram", "alert_format", "alert_links", "alert_policy", "alert_attention", "hook_install"]
+py-modules = ["jcode_telegram", "alert_format", "alert_links", "alert_policy", "alert_attention", "alert_selector", "hook_install"]
 
 [tool.setuptools.data-files]
 "share/jcode-telegram-alerts/prompts" = ["prompts/owner-workflow.md"]

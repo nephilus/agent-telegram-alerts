@@ -147,6 +147,176 @@ def session_prompt(home, session_id, response):
     return ""
 
 
+def selector_context(home, environment, secrets=(), *, allow_fork=False):
+    """Recover one exact public final, including native append-only journals.
+
+    The hook contains only the first 4000 characters. Never infer a completed
+    answer from a newer turn, a tool block, or a worker's automatic name. Native
+    files can be group-readable/writable, so their modes are not a private
+    evidence-store contract. The separate selector journal is owner-only.
+    """
+    sid = environment.get("JCODE_HOOK_SESSION_ID", "")
+    excerpt = environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", "")
+    if (not isinstance(sid, str) or not re.fullmatch(r"session_[A-Za-z0-9_-]{1,180}", sid)
+            or not isinstance(excerpt, str) or not excerpt.strip() or len(excerpt) > 4000):
+        raise ValueError("source_unavailable")
+
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError("source_unavailable")
+            value[key] = item
+        return value
+
+    def decode(raw):
+        return json.loads(raw, object_pairs_hook=pairs,
+                          parse_constant=lambda _: (_ for _ in ()).throw(ValueError("source_unavailable")))
+
+    folder = os.open(Path(home) / "sessions", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if os.fstat(folder).st_uid != os.getuid():
+            raise ValueError("source_unavailable")
+
+        def read(name, limit, missing=None):
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+            except FileNotFoundError:
+                return missing
+            with os.fdopen(fd, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                        or info.st_nlink != 1 or info.st_size > limit):
+                    raise ValueError("source_unavailable")
+                raw = stream.read(limit + 1)
+                if len(raw) > limit:
+                    raise ValueError("source_unavailable")
+                return raw
+
+        raw = read(sid + ".json", 128 * 1024 * 1024)
+        data = decode(raw) if raw else {}
+        if not isinstance(data, dict) or data.get("id") != sid or not isinstance(data.get("messages"), list):
+            raise ValueError("source_unavailable")
+        by_id = {}
+        for message in data["messages"]:
+            if isinstance(message, dict) and isinstance(message.get("id"), str):
+                by_id[message["id"]] = message
+        journal = read(sid + ".journal.jsonl", 32 * 1024 * 1024, b"")
+        for line in journal.splitlines():
+            record = decode(line)
+            if not isinstance(record, dict) or set(record) - {"meta", "append_messages", "append_env_snapshots"}:
+                raise ValueError("source_unavailable")
+            meta, appended = record.get("meta", {}), record.get("append_messages", [])
+            if not isinstance(meta, dict) or not isinstance(appended, list):
+                raise ValueError("source_unavailable")
+            data.update({key: value for key, value in meta.items() if key not in ("id", "messages")})
+            for message in appended:
+                if not isinstance(message, dict) or not isinstance(message.get("id"), str):
+                    raise ValueError("source_unavailable")
+                by_id[message["id"]] = message
+    finally:
+        os.close(folder)
+    if "parent_id" not in data:
+        raise ValueError("source_unavailable")
+    if data["parent_id"] is not None and not allow_fork:
+        raise ValueError("internal_session")
+
+    def public(message):
+        if message.get("role") != "assistant" or message.get("display_role"):
+            return ""
+        content = message.get("content", [])
+        if isinstance(content, list) and any(isinstance(block, dict) and block.get("type") == "tool_use" for block in content):
+            return ""
+        return text_blocks(message).strip()
+
+    messages = list(by_id.values())
+    matches = [index for index, message in enumerate(messages)
+               if (text := public(message)) and (text == excerpt.strip()
+                   or (len(excerpt) == 4000 and text[:4000].strip() == excerpt.strip()))]
+    if len(matches) != 1:
+        raise ValueError("source_unavailable")
+    index = matches[0]
+    if any(public(message) for message in messages[index + 1:]):
+        raise ValueError("stale_source")
+    response = public(messages[index])
+    if len(response) > 16000:
+        raise ValueError("source_oversize")
+    humans = []
+    for message in reversed(messages[:index]):
+        if message.get("role") != "user" or message.get("display_role"):
+            continue
+        raw = text_blocks(message).strip()
+        if not raw:
+            continue  # Tool results are not a new human request.
+        stripped = re.sub(r"^\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*", "", raw)
+        internal = (not user_request(raw) and stripped.lower() not in ("yes", "ok", "okay", "continue", "thanks", "exit"))
+        internal = internal or bool(re.match(
+            r"(?:DM from |Cross-swarm DM from |You have \d+ incomplete todo|🐝|⚠ File activity:|\[Scheduled task\])", stripped, re.I))
+        if internal:
+            if not humans:
+                raise ValueError("internal_turn")
+            continue
+        request = user_request(raw)
+        humans.append(request or stripped)
+        if len(humans) == 3:
+            break
+    if not humans:
+        raise ValueError("source_unavailable")
+    current = sanitize(response, secrets)
+    if not current:
+        raise ValueError("empty_source")
+    previous = next((public(item) for item in reversed(messages[:index]) if public(item)), "")
+    name = data.get("custom_title") or (data.get("save_label") if data.get("saved") is True else "")
+    source_environment = {**environment, "JCODE_HOOK_LAST_ASSISTANT_TEXT": response}
+    return {
+        "turn": {"session_id": sid, "turn_id": messages[index]["id"],
+                 "task_context": sanitize("\n".join(reversed(humans)), secrets)[:4000],
+                 "candidate_text": re.split(r"\n\s*\n", current, maxsplit=1)[0],
+                 "current_public_final": current,
+                 "previous_public_final": sanitize(previous, secrets)[:4000],
+                 "links": response_links(response, secrets)},
+        "environment": source_environment,
+        "session_name": name if isinstance(name, str) else "",
+    }
+
+
+def render_selected_message(environment, secrets=(), *, session_name=""):
+    """Copy the public reply, without model rewriting or old 34-word excerpts.
+
+    Native Markdown and secrets receive the same cleanup as existing alerts.
+    A visibly clipped body and complete original link footer fit Telegram's
+    UTF-16 limit. The classifier cannot supply text, labels or destinations.
+    """
+    header = "🔔 Jcode update"
+    name = session_label(session_name, "expanded", secrets)
+    if name:
+        header += "\n🏷 Session: " + name
+    header += ("\n📁 " + folder_label(environment, "expanded", secrets) + " · "
+               + duration_label(environment.get("JCODE_HOOK_DURATION_MS")) + "\n\n")
+    response = environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", "")
+    footer = link_footer(response_links(response, secrets), "expanded")
+    body = sanitize(response, secrets)
+    if not body:
+        raise ValueError("Empty selected update")
+    available = 4000 - utf16_length(header + footer["text"])
+    # Leave room for the visible clipping marker. Never split an astral codepoint.
+    shortened = clip(body, max(1, 590 - len((header + footer["text"]).split())), 16000)
+    if utf16_length(shortened) > available:
+        chars, units = [], 0
+        for char in shortened:
+            size = utf16_length(char)
+            if units + size > available - 1:
+                break
+            chars.append(char)
+            units += size
+        shortened = "".join(chars).rstrip() + "…"
+    message = prepend_message(footer, header + shortened)
+    message["entities"].insert(0, {"type": "bold", "offset": utf16_length("🔔 "),
+                                    "length": utf16_length("Jcode update")})
+    message["prompt_available"] = False
+    return message
+
+
 def response_parts(response, secrets=()):
     result, checked, next_step = [], [], []
     for line in sanitize(response, secrets).splitlines():

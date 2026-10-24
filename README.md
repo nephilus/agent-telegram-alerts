@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/nephilus/jcode-telegram-alerts)](https://github.com/nephilus/jcode-telegram-alerts/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Unofficial event-aware Telegram alerts for [Jcode](https://github.com/1jehuang/jcode).** Get concise task context and readable results without exporting an entire transcript or making another model call.
+**Unofficial event-aware Telegram alerts for [Jcode](https://github.com/1jehuang/jcode).** Get task context, readable results and clickable links. Default alerts need no model call; an optional Clef filter can select which completed turns deserve an update.
 
 > This community extension is not part of, endorsed by, or supported by the Jcode maintainers. It uses Jcode's native lifecycle hook and Telegram credentials. It does not add a remote-command server.
 
@@ -16,6 +16,7 @@
 - Offers **brief**, **contextual**, and **expanded** profiles. Expanded is the default.
 - Uses bold headings, readable section spacing, useful emojis, and compact clickable output links.
 - Sends explicit owner handoffs immediately with Context, a precise request, a recommendation and verified links.
+- Optionally asks Clef to select completion updates, forwarding the original reply rather than generating another summary. Explicit attention and errors remain independent.
 - Links a dedicated bot through a private-chat challenge and hidden terminal token entry.
 - Adds/removes its own hook without replacing unrelated hooks or Telegram settings.
 - Uses only the Python standard library at runtime. Python **3.11+** and Linux/macOS are supported.
@@ -170,6 +171,8 @@ jcode-telegram verbosity
 
 Character caps count Unicode code points, not bytes or visual graphemes. Telegram bold offsets use UTF-16 units separately. Emojis and layout count toward the caps. Brief keeps section content on the label's line; contextual and expanded put it below the label. Failed turns use ❌ and saved-session previews use 👀. The neutral 🔎 does not imply that checks passed.
 
+Clef-selected completions use a separate bounded literal-copy layout, not these excerpt profiles. Long replies are visibly clipped, with complete accepted links retained in a footer. Other alerts keep their existing profiles.
+
 Changing verbosity hot-reloads and preserves native credentials, reply settings, ambient settings, and hook thresholds. The private preference file is `~/.jcode/notifications/telegram-settings.json`. Missing preferences default to expanded; invalid preferences fall back to brief rather than increasing disclosure.
 
 ## Choose which events notify
@@ -198,7 +201,7 @@ jcode-telegram policy --disable completion
 jcode-telegram policy --audible error
 ```
 
-In ordinary message mode, successful turns still need to meet the hook duration threshold, 30 seconds by default. Within a session's completion cooldown, further qualifying completions are counted instead of sent. The next eligible completion includes a bounded `Grouped:` count. There is no background timer or delayed digest, so a suppressed final completion is not automatically sent later.
+Without the optional selector, ordinary successful-turn messages must meet the hook duration threshold, 30 seconds by default. Within a session's completion cooldown, further qualifying completions are counted instead of sent. The next eligible completion includes a bounded `Grouped:` count. There is no background timer or delayed digest, so a suppressed final completion is not automatically sent later.
 
 Distinct errors bypass the completion threshold and cooldown. Repeats of the same error are suppressed for the error-repeat interval. A new error reason remains eligible. Cooldowns are per session, not per project or bot. Set an interval to `0` to disable that suppression.
 
@@ -221,9 +224,17 @@ jcode-telegram policy --exclude-session ANOTHER_SESSION_ID
 jcode-telegram policy --clear-session-filters
 ```
 
-Repeated include/exclude options replace the corresponding list. Exclusion wins. These are explicit choices, not automatic root/worker detection. The hook payload has no reliable worker identity, and saved parent IDs also include user-created forks. Unavailable context is not guessed.
+Repeated include/exclude options replace the corresponding list. Exclusion wins. Without the optional selector, there is no automatic root/worker detection. The hook payload has no reliable worker identity, and saved parent IDs also include user-created forks. The selector uses saved metadata conservatively: parented sessions are excluded unless their exact ID is explicitly included. Unavailable context is not guessed.
 
 Policy settings are private local state in `~/.jcode/notifications/telegram-policy.json`. Malformed or unsafe policy/state files fail closed for outgoing alerts rather than reverting to noisier defaults.
+
+### Optional Clef completion filter
+
+The [setup and recovery runbook](docs/plans/2026-10-24-clef-selector-setup.md) covers installing this source into the **actual saved hook runtime**, configuring an existing maintained Clef endpoint and private key file, monitoring the first 100 eligible turns, and rolling back. This feature is not in published v0.6.1; the local source build still reports that version, so check that the saved executable recognizes `selector` rather than relying on `--version` or hook ownership status.
+
+Clef answers one typed YES/NO question for a uniquely matched successful owner-root turn. A YES sends the sanitized original public reply and independently validated original links, bypassing the usual completion duration threshold and cooldown. A NO stays quiet. Known child/automated turns and stale or ambiguous source are excluded. Errors and explicit `attention` are not gated by Clef.
+
+This opt-in mode sends bounded sanitized context to the configured decision service and retains private content for up to 100 eligible turns for review. There is no Qwen rewrite, cloud fallback, automatic retry or unfiltered fallback when selection fails. Read-only `jcode-telegram selector` reports counts, not proof of delivery or usefulness. `jcode-telegram selector off` returns to **quiet completions**, preserving errors, explicit attention and collected evidence. See the [rollout observations and limits](docs/plans/2026-10-24-clef-live-rollout.md).
 
 ### Preview and test
 
@@ -241,8 +252,8 @@ jcode-telegram test --verbosity expanded
 ## Trigger rules and native support
 
 - Default ordinary messages: successful turns lasting **at least 30 seconds** can notify, subject to the five-minute per-session completion interval. Distinct errors can notify regardless of duration.
-- A turn is one model response cycle. Worker/swarm turns can notify too.
-- Completion grouping and repeated-error suppression are configurable. There is no focus check or automatic root-only filter.
+- A turn is one model response cycle. Without the optional selector, worker/swarm turns can notify too.
+- Completion grouping and repeated-error suppression are configurable. There is no focus check. The optional selector adds conservative root-turn eligibility and bypasses completion grouping only for selected updates.
 - These profiles affect only this extension's alerts, not native ambient summaries, permission notifications, or inbound replies.
 - Jcode's desktop notification thresholds do not throttle this extension.
 - Delivery is best effort, with a network timeout and no automatic retry.
@@ -255,7 +266,9 @@ This project was developed against **Jcode v0.98.1**. In that version, a real `j
 
 **Task/result excerpts are intentionally sent to your configured Telegram destination.** Use a private bot you trust. Read [SECURITY.md](SECURITY.md) before enabling this for sensitive work.
 
-The helper reads public text from only the matching saved session, up to 8 MiB. It requires a unique corresponding assistant response before including the request. Missing/ambiguous context is unavailable. Failed turns omit unbound prompt context and use the current error rather than a stale successful response. Reasoning, images, and shell/tool results are not exported as request context.
+Ordinary excerpt formatting reads public text from only the matching saved session, up to 8 MiB. It requires a unique corresponding assistant response before including the request. Missing/ambiguous context is unavailable. Failed turns omit unbound prompt context and use the current error rather than a stale successful response. Reasoning, images, and shell/tool results are not exported as request context.
+
+The optional selector separately reads a bounded native snapshot and journal to recover the complete public final behind the hook excerpt. It sends bounded sanitized task context, the current final and a previous public final to the configured Clef service. Its private `telegram-selector-state.json` retains those inputs and allowed original links for the configured sample, unlike the fingerprint-only routine receipts below. Protect this file and do not publish it. Full limits and the distinction between selection, delivery and human usefulness are in the [selector runbook](docs/plans/2026-10-24-clef-selector-setup.md).
 
 Code fences, paths within request/result text, URLs, email addresses, common credential forms, known bot credentials, and labeled secret values are redacted on a **best-effort basis**. The explicit working-folder metadata line is the intentional path-display exception described above. This is not comprehensive data-loss prevention and does not make arbitrary private prose safe to forward. Preview before using it with confidential projects.
 
