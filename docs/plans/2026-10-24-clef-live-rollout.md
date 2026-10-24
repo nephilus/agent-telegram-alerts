@@ -4,11 +4,11 @@
 
 On October 24, 2026, the owner authorized enabling the tested Clef selector for ordinary turn-finished updates instead of leaving all completion pushes disabled. Explicit `attention` / “Jcode needs you” remains independent. Collect the next 100 eligible turns privately and quietly for a post-implementation review (PIR).
 
-Task branch: `feat/clef-live-update-filter-20261024`. This is a local implementation and installation, not authorization to push, open a PR, merge or publish a release.
+Task branch: `feat/clef-live-update-filter-20261024`. The initial authorization covered local implementation and installation. At 20:01 UTC on October 24, the owner separately requested a PR and setup documentation. That authorizes draft PR publication, not merge or release. Operators should follow the [setup and recovery runbook](2026-10-24-clef-selector-setup.md).
 
 ## Delivery contract
 
-- Use the frozen E yes/no Choice prompt from `docs/research/2026-10-24-clef-notification-safety-net.md`. The model selects a label. It cannot write the notification, supply a destination or execute a requested action.
+- Use the frozen E yes/no Choice prompt, embedded as `QUESTION` in [alert_selector.py](../../alert_selector.py). The model selects a label. It cannot write the notification, supply a destination or execute a requested action.
 - Read the complete public final from the native session snapshot and append-only journal, binding it to the hook's exact 4000-character excerpt. Read only public text blocks, not reasoning or tool results.
 - Consider successful owner-root turns. Exclude known child sessions, stale/ambiguous source matches and automated coordination-only turns. A user-created fork also has a parent, so it is conservatively excluded unless its exact session ID is explicitly included in the existing delivery policy.
 - A YES permits one new ordinary Telegram update. Preserve the original ELIF/public reply with existing secret and Markdown cleanup. Include only independently validated original links. No Qwen rewriting.
@@ -61,7 +61,7 @@ jcode-telegram selector off
 | --- | --- |
 | Tested prompt, not another rewrite | Exact E instructions/criteria fingerprint and strict single Choice response tests |
 | Complete native source | Snapshot plus journal, 4000-character prefix recovery, duplicate/stale/tool/child/automation rejection tests and a real native turn |
-| Useful short updates can reach the owner | Offline YES integration and a separate real Telegram formatter check passed. Three short native turns reached Clef through a child-only witness, but all returned NO. Automatic production YES-to-Telegram remains unobserved. |
+| Useful short updates can reach the owner | Offline YES integration and a separate real Telegram formatter check passed. Three short native turns reached Clef through a child-only witness, but all returned NO. After the runtime correction, normal automatic YES deliveries were observed, as recorded below; their usefulness is not yet human-rated. |
 | NO does not send | Actual maintained Clef NO on a native routine response with a quiet observer receipt |
 | No model-generated notification or links | Exact sanitized source text and original verified URL entity comparison |
 | Explicit attention and errors remain independent | Existing attention tests plus selector-enabled observer error and repeated-error tests, no redundant owner-action send needed |
@@ -83,17 +83,25 @@ After the owner reported missing notifications, inspection found that all four s
 
 The complete previous owned runtime was backed up privately. The same tested independent wheel was then installed into the exact runtime the saved observers already invoke. Both installed runtimes now have seven byte-exact matching modules. Native configuration, foreign hooks, global guidance, selector policy, selector evidence and stable wrappers remained unchanged, so existing cached hook paths need no daemon restart.
 
-The exact saved `turn_end` command was exercised using an already-claimed NO event. It produced `quiet` / `duplicate`, with unchanged counters and no additional classification or notification. This checks the actual configured executable without forcing a YES. New natural-turn ingress and automatic YES delivery still require observation after this correction.
+The exact saved `turn_end` command was exercised using an already-claimed NO event. It produced `quiet` / `duplicate`, with unchanged counters and no additional classification or notification. This checked the actual configured executable without forcing a YES. Natural-turn ingress and automatic YES delivery were still unobserved at that point; subsequent observations are below.
 
 ### Earlier checks and their limits
 
 - The combined workspace ran a successful 297-test suite, with one existing skip. The independent branch ran 287 tests successfully, with the same skip, and built both wheel and source archives. Installed public query/on/off, repeated configuration, three previews and quiet rollback passed in isolated homes.
 - Three actual native turns in a fresh, then resumed session reached the maintained Clef API. Child-only hook witnesses invoked the real installed observer, without editing native hooks. Decisions were **NO, NO, NO**, taking approximately 0.16, 0.20 and 0.23 seconds. All turns were below the old 30-second completion threshold. No tool was called by these native writing turns.
 - The routine acknowledgment was correctly kept quiet. The useful installation notice and the follow-up limitation finding were also kept quiet. These are potential missed updates according to the agent's expectations, not owner usefulness labels. Keep them in the evidence instead of silently adjusting the frozen prompt to obtain a YES.
-- **An automatic native YES-to-Telegram delivery has not yet been observed.** Separately, one visibly labeled formatter check sent the original native reply through the installed notification renderer and real Telegram transport. Telegram acknowledged the exact text, trusted bold ranges and original clickable repository target. This checked that delivery boundary, not the classifier's judgment.
+- **At the initial acceptance check, automatic native YES-to-Telegram delivery was unobserved.** Separately, one visibly labeled formatter check sent the original native reply through the installed notification renderer and real Telegram transport. Telegram acknowledged the exact text, trusted bold ranges and original clickable repository target. This checked that delivery boundary, not the classifier's judgment.
 - Native configuration, global overlay, saved verbosity, review-host trust, maintained API reference and credential remained unchanged. Only the two stable helper wrappers and selected-completion policy changed. Errors and explicit attention stayed independent. Selector configuration and evidence are owner-only, and exact known credentials and the private home path were absent from collected inputs.
 
 At 13:21 UTC the counter still contained only the three marked acceptance turns, not observed natural production traffic. Preserve their identities privately and exclude them from any natural-usefulness rate. Collection stops retaining content at 100 records, while filtering continues. No production precision, recall or owner benefit has been established by these installation checks.
+
+### Subsequent normal production observations
+
+At 13:25:52 UTC, a genuinely new normal owner completion reached the repaired saved hook without a child override or writing test. Clef returned NO in approximately 0.28 seconds and the observer stayed quiet. This established normal post-repair ingress without replaying a turn or sending a test.
+
+A read-only inspection of existing local evidence at 20:06 UTC found **21 records across nine session fingerprints: 12 YES and nine NO**. All 12 YES records had automatic `sent` receipts with both Telegram response and exact formatting confirmed; three included original clickable link entities. No classification failure or busy outcome appeared in this bounded sample. This observation used existing records only, with no new API call or test notification.
+
+The three marked acceptance turns remain part of the raw count and must be excluded from natural-usefulness analysis. Telegram acknowledgment establishes server acceptance of those messages, not phone visibility, reading, approval, or the quality of Clef's choices. The 100-turn collection is still incomplete.
 
 ## PIR reading rules
 
