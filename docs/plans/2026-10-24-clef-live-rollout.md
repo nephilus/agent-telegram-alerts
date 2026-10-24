@@ -61,7 +61,7 @@ jcode-telegram selector off
 | --- | --- |
 | Tested prompt, not another rewrite | Exact E instructions/criteria fingerprint and strict single Choice response tests |
 | Complete native source | Snapshot plus journal, 4000-character prefix recovery, duplicate/stale/tool/child/automation rejection tests and a real native turn |
-| Useful short updates can reach the owner | Installed observer/native turn below the old duration threshold, actual Clef YES and Telegram text/entity confirmation |
+| Useful short updates can reach the owner | Offline YES integration and a separate real Telegram formatter check passed. Three short native turns reached Clef through a child-only witness, but all returned NO. Automatic production YES-to-Telegram remains unobserved. |
 | NO does not send | Actual maintained Clef NO on a native routine response with a quiet observer receipt |
 | No model-generated notification or links | Exact sanitized source text and original verified URL entity comparison |
 | Explicit attention and errors remain independent | Existing attention tests plus selector-enabled observer error and repeated-error tests, no redundant owner-action send needed |
@@ -75,7 +75,17 @@ Passing synthetic transport tests is not evidence of actual Telegram delivery. T
 
 ## Observed installation on October 24, 2026
 
-The selector was enabled locally at 12:55 UTC. The installed runtime came from independent task-branch revision `ef6bab9296974f57ec711a6ec2ebe7e43d4a34be`, not the combined workspace. Its wheel SHA-256 is `0f53520da6549c1d55c8887bf76b56e45e46203b9c1d648f1ee7226b3bc045c2`. All seven installed Python modules matched that wheel. This is an unpublished local build, not a new public release.
+The selector policy was enabled locally at 12:55 UTC. The initially installed runtime came from independent task-branch revision `ef6bab9296974f57ec711a6ec2ebe7e43d4a34be`, not the combined workspace. Its wheel SHA-256 is `0f53520da6549c1d55c8887bf76b56e45e46203b9c1d648f1ee7226b3bc045c2`. All seven installed Python modules matched that wheel. This is an unpublished local build, not a new public release. **That initial check did not establish production hook routing.**
+
+### Hook-runtime correction at 13:19 UTC
+
+After the owner reported missing notifications, inspection found that all four saved Jcode observers still invoked the previous installation, not the newly updated stable wrapper. The actual saved executable did not support `selector`, and normal completion diagnostics reported `invalid_policy`. The three earlier native checks had used a child-only witness that called the new wrapper. Calling the hook installer `status` had established ownership, not that the saved executable contained the new feature. The initial production-readiness claim was therefore overstated.
+
+The complete previous owned runtime was backed up privately. The same tested independent wheel was then installed into the exact runtime the saved observers already invoke. Both installed runtimes now have seven byte-exact matching modules. Native configuration, foreign hooks, global guidance, selector policy, selector evidence and stable wrappers remained unchanged, so existing cached hook paths need no daemon restart.
+
+The exact saved `turn_end` command was exercised using an already-claimed NO event. It produced `quiet` / `duplicate`, with unchanged counters and no additional classification or notification. This checks the actual configured executable without forcing a YES. New natural-turn ingress and automatic YES delivery still require observation after this correction.
+
+### Earlier checks and their limits
 
 - The combined workspace ran a successful 297-test suite, with one existing skip. The independent branch ran 287 tests successfully, with the same skip, and built both wheel and source archives. Installed public query/on/off, repeated configuration, three previews and quiet rollback passed in isolated homes.
 - Three actual native turns in a fresh, then resumed session reached the maintained Clef API. Child-only hook witnesses invoked the real installed observer, without editing native hooks. Decisions were **NO, NO, NO**, taking approximately 0.16, 0.20 and 0.23 seconds. All turns were below the old 30-second completion threshold. No tool was called by these native writing turns.
@@ -83,7 +93,7 @@ The selector was enabled locally at 12:55 UTC. The installed runtime came from i
 - **An automatic native YES-to-Telegram delivery has not yet been observed.** Separately, one visibly labeled formatter check sent the original native reply through the installed notification renderer and real Telegram transport. Telegram acknowledged the exact text, trusted bold ranges and original clickable repository target. This checked that delivery boundary, not the classifier's judgment.
 - Native configuration, global overlay, saved verbosity, review-host trust, maintained API reference and credential remained unchanged. Only the two stable helper wrappers and selected-completion policy changed. Errors and explicit attention stayed independent. Selector configuration and evidence are owner-only, and exact known credentials and the private home path were absent from collected inputs.
 
-The live counter initially contains three marked acceptance turns. Preserve their identities privately and exclude them from any natural-usefulness rate. Collection stops retaining content at 100 records, while filtering continues. No production precision, recall or owner benefit has been established by this installation check.
+At 13:21 UTC the counter still contained only the three marked acceptance turns, not observed natural production traffic. Preserve their identities privately and exclude them from any natural-usefulness rate. Collection stops retaining content at 100 records, while filtering continues. No production precision, recall or owner benefit has been established by these installation checks.
 
 ## PIR reading rules
 
