@@ -120,7 +120,8 @@ class ReadabilityTests(unittest.TestCase):
             self.assertEqual(method, "sendMessage")
             self.assertNotIn("parse_mode", values)
             self.assertNotIn("prompt_available", values)
-            self.assertEqual(bold_fragments(values), ["Jcode turn failed", "Result:"])
+            self.assertEqual(bold_fragments(values), ["Jcode turn failed", "Session:", "Result:"])
+            self.assertIn("🏷 Session: chat-", values["text"])
             return {"message_id": 123, "text": values["text"], "entities": values["entities"]}
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "JCODE_HOME": directory}), patch.object(app.sys, "argv", ["jcode-telegram", "alert"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge) as send:
@@ -131,7 +132,7 @@ class ReadabilityTests(unittest.TestCase):
             self.assertTrue(receipt["response_confirmed"])
             self.assertTrue(receipt["formatting_confirmed"])
             self.assertFalse(receipt["prompt_available"])
-            self.assertEqual(receipt["bold_entities"], 2)
+            self.assertEqual(receipt["bold_entities"], 3)
             self.assertNotIn("Current error", app.receipt_path().read_text())
             self.assertNotIn("SYNTHETIC_TOKEN", app.receipt_path().read_text())
 

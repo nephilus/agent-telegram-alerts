@@ -1,4 +1,5 @@
 """Bounded local excerpts for Telegram alerts. Never reads reasoning or tool blocks."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,8 @@ PROFILES = {
     "contextual": {"words": 60, "chars": 800, "asked": 12, "result": 18, "checked": 8, "next": 8, "asked_chars": 180, "result_chars": 300, "extra_chars": 100},
     "expanded": {"words": 100, "chars": 1400, "asked": 20, "result": 34, "checked": 14, "next": 14, "asked_chars": 260, "result_chars": 520, "extra_chars": 220},
 }
-MAX_SESSION_BYTES = 8 * 1024 * 1024
+MAX_SESSION_BYTES = 128 * 1024 * 1024
+MAX_JOURNAL_BYTES = 32 * 1024 * 1024
 
 
 def clip(text, words, chars=1400):
@@ -77,28 +79,87 @@ def text_blocks(message):
                      and isinstance(block.get("text"), str))
 
 
-def read_session(home, session_id):
+def _native_session(home, session_id):
+    """Read one bounded native snapshot and its append-only updates, or fail closed."""
     if not isinstance(session_id, str) or not re.fullmatch(r"session_[A-Za-z0-9_-]{1,180}", session_id):
-        return {}
-    path = Path(home) / "sessions" / (session_id + ".json")
+        raise ValueError("source_unavailable")
+
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError("source_unavailable")
+            value[key] = item
+        return value
+
+    def decode(raw):
+        return json.loads(raw, object_pairs_hook=pairs,
+                          parse_constant=lambda _: (_ for _ in ()).throw(ValueError("source_unavailable")))
+
+    folder = os.open(Path(home) / "sessions", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-        fd = os.open(path, flags)
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_SESSION_BYTES:
-                return {}
-            data = json.loads(stream.read(MAX_SESSION_BYTES + 1))
+        if os.fstat(folder).st_uid != os.getuid():
+            raise ValueError("source_unavailable")
+
+        def read(name, limit, missing=None):
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
+            except FileNotFoundError:
+                return missing
+            with os.fdopen(fd, "rb") as stream:
+                info = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                        or info.st_nlink != 1 or info.st_size > limit):
+                    raise ValueError("source_unavailable")
+                raw = stream.read(limit + 1)
+                if len(raw) > limit:
+                    raise ValueError("source_unavailable")
+                return raw
+
+        raw = read(session_id + ".json", MAX_SESSION_BYTES)
+        data = decode(raw) if raw else {}
         if not isinstance(data, dict) or data.get("id") != session_id or not isinstance(data.get("messages"), list):
-            return {}
+            raise ValueError("source_unavailable")
+        # Preserve native message order when a journal replaces an existing ID.
+        messages = data["messages"]
+        positions = {item["id"]: index for index, item in enumerate(messages)
+                     if isinstance(item, dict) and isinstance(item.get("id"), str)}
+        journal = read(session_id + ".journal.jsonl", MAX_JOURNAL_BYTES, b"")
+        for line in journal.splitlines():
+            record = decode(line)
+            if not isinstance(record, dict) or set(record) - {"meta", "append_messages", "append_env_snapshots"}:
+                raise ValueError("source_unavailable")
+            meta, appended = record.get("meta", {}), record.get("append_messages", [])
+            if not isinstance(meta, dict) or not isinstance(appended, list):
+                raise ValueError("source_unavailable")
+            data.update({key: value for key, value in meta.items() if key not in ("id", "messages")})
+            for message in appended:
+                if not isinstance(message, dict) or not isinstance(message.get("id"), str):
+                    raise ValueError("source_unavailable")
+                identity = message["id"]
+                if identity in positions:
+                    messages[positions[identity]] = message
+                else:
+                    positions[identity] = len(messages)
+                    messages.append(message)
         return data
+    finally:
+        os.close(folder)
+
+
+def read_session(home, session_id):
+    try:
+        return _native_session(home, session_id)
     except (OSError, ValueError, RecursionError):
         return {}
 
 
 def saved_session_name(home, session_id):
     """Follow native explicit-name precedence, never the generated title/name."""
-    session = read_session(home, session_id)
+    return _explicit_name(read_session(home, session_id))
+
+
+def _explicit_name(session):
     title = session.get("custom_title")
     if isinstance(title, str) and title.strip():
         return title.strip()
@@ -106,6 +167,16 @@ def saved_session_name(home, session_id):
     if session.get("saved") is True and isinstance(label, str):
         return label.strip()
     return ""
+
+
+def _chat_identity(session, session_id):
+    return {"title": _explicit_name(session), "short_name": session.get("short_name"),
+            "session_id": session_id}
+
+
+def chat_identity(home, session_id):
+    """Keep a meaningful title and a stable native chat identifier separate."""
+    return _chat_identity(read_session(home, session_id), session_id)
 
 
 def user_request(text):
@@ -161,61 +232,9 @@ def selector_context(home, environment, secrets=(), *, allow_fork=False):
             or not isinstance(excerpt, str) or not excerpt.strip() or len(excerpt) > 4000):
         raise ValueError("source_unavailable")
 
-    def pairs(items):
-        value = {}
-        for key, item in items:
-            if key in value:
-                raise ValueError("source_unavailable")
-            value[key] = item
-        return value
-
-    def decode(raw):
-        return json.loads(raw, object_pairs_hook=pairs,
-                          parse_constant=lambda _: (_ for _ in ()).throw(ValueError("source_unavailable")))
-
-    folder = os.open(Path(home) / "sessions", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        if os.fstat(folder).st_uid != os.getuid():
-            raise ValueError("source_unavailable")
-
-        def read(name, limit, missing=None):
-            try:
-                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
-            except FileNotFoundError:
-                return missing
-            with os.fdopen(fd, "rb") as stream:
-                info = os.fstat(stream.fileno())
-                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
-                        or info.st_nlink != 1 or info.st_size > limit):
-                    raise ValueError("source_unavailable")
-                raw = stream.read(limit + 1)
-                if len(raw) > limit:
-                    raise ValueError("source_unavailable")
-                return raw
-
-        raw = read(sid + ".json", 128 * 1024 * 1024)
-        data = decode(raw) if raw else {}
-        if not isinstance(data, dict) or data.get("id") != sid or not isinstance(data.get("messages"), list):
-            raise ValueError("source_unavailable")
-        by_id = {}
-        for message in data["messages"]:
-            if isinstance(message, dict) and isinstance(message.get("id"), str):
-                by_id[message["id"]] = message
-        journal = read(sid + ".journal.jsonl", 32 * 1024 * 1024, b"")
-        for line in journal.splitlines():
-            record = decode(line)
-            if not isinstance(record, dict) or set(record) - {"meta", "append_messages", "append_env_snapshots"}:
-                raise ValueError("source_unavailable")
-            meta, appended = record.get("meta", {}), record.get("append_messages", [])
-            if not isinstance(meta, dict) or not isinstance(appended, list):
-                raise ValueError("source_unavailable")
-            data.update({key: value for key, value in meta.items() if key not in ("id", "messages")})
-            for message in appended:
-                if not isinstance(message, dict) or not isinstance(message.get("id"), str):
-                    raise ValueError("source_unavailable")
-                by_id[message["id"]] = message
-    finally:
-        os.close(folder)
+    data = _native_session(home, sid)
+    by_id = {message["id"]: message for message in data["messages"]
+             if isinstance(message, dict) and isinstance(message.get("id"), str)}
     if "parent_id" not in data:
         raise ValueError("source_unavailable")
     if data["parent_id"] is not None and not allow_fork:
@@ -266,7 +285,6 @@ def selector_context(home, environment, secrets=(), *, allow_fork=False):
     if not current:
         raise ValueError("empty_source")
     previous = next((public(item) for item in reversed(messages[:index]) if public(item)), "")
-    name = data.get("custom_title") or (data.get("save_label") if data.get("saved") is True else "")
     source_environment = {**environment, "JCODE_HOOK_LAST_ASSISTANT_TEXT": response}
     return {
         "turn": {"session_id": sid, "turn_id": messages[index]["id"],
@@ -276,7 +294,7 @@ def selector_context(home, environment, secrets=(), *, allow_fork=False):
                  "previous_public_final": sanitize(previous, secrets)[:4000],
                  "links": response_links(response, secrets)},
         "environment": source_environment,
-        "session_name": name if isinstance(name, str) else "",
+        "session_name": _chat_identity(data, sid),
     }
 
 
@@ -388,8 +406,25 @@ def folder_label(environment, verbosity="expanded", secrets=()):
 
 
 def session_label(name, verbosity="expanded", secrets=()):
-    """Keep explicit names single-line and body-redacted before shortening."""
+    """Keep titles single-line and reserve room for the identifying chat suffix."""
     words, chars = {"brief": (2, 40), "contextual": (5, 80), "expanded": (8, 120)}[verbosity]
+    secrets = tuple(secrets)
+    if isinstance(name, dict):
+        sid = name.get("session_id")
+        if not isinstance(sid, str) or not re.fullmatch(r"session_[A-Za-z0-9_-]{1,180}", sid):
+            return ""
+        identifier = name.get("short_name")
+        if (not isinstance(identifier, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}", identifier)
+                or sanitize(identifier, secrets) != identifier):
+            identifier = "chat-" + hashlib.sha256(sid.encode()).hexdigest()[:8]
+            if sanitize(identifier, secrets) != identifier:
+                identifier = "chat"
+        title = " ".join(sanitize(name.get("title"), secrets).split())
+        if not title:
+            return identifier
+        suffix = " [" + identifier + "]"
+        return clip(title, words - 1, chars - len(suffix)) + suffix
     return clip(" ".join(sanitize(name, secrets).split()), words, chars)
 
 

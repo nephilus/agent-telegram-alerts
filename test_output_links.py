@@ -201,7 +201,7 @@ class OutputLinkTests(unittest.TestCase):
             receipt = json.loads(app.receipt_path().read_text())
             self.assertEqual(receipt["state"], "sent")
             self.assertEqual(receipt["link_entities"], 1)
-            self.assertEqual(receipt["bold_entities"], 3)
+            self.assertEqual(receipt["bold_entities"], 4)
             self.assertTrue(receipt["response_confirmed"])
             self.assertTrue(receipt["formatting_confirmed"])
             self.assertNotIn(PR, app.receipt_path().read_text())

@@ -161,9 +161,9 @@ def render(request, environment, home, secrets=(), *, review_port=None):
 
     append("Jcode needs you", bold=True)
     session = environment.get("JCODE_SESSION_ID", "")
-    name = formatting.session_label(formatting.saved_session_name(home, session), secrets=secrets)
+    name = formatting.session_label(formatting.chat_identity(home, session), secrets=secrets)
     if name:
-        append("\n🏷 " + name)
+        append("\n🏷 Session: " + name)
     append("\n📁 " + formatting.folder_label({"JCODE_HOOK_CWD": environment.get("JCODE_HOOK_CWD")}, secrets=secrets))
     for icon, title, value in (("👉", "Needs you", needed), ("🧭", "Context", context),
                                 ("✅", "Recommended", recommendation)):

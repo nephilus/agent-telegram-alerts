@@ -229,7 +229,7 @@ def alert_message(environment, min_seconds=30, verbosity=None):
             config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""),
             environment.get("JCODE_HOOK_LAST_ASSISTANT_TEXT", ""),
         )
-    name = formatting.saved_session_name(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
+    name = formatting.chat_identity(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
     return formatting.render_message(environment, selected_verbosity(verbosity), prompt, alert_secrets(), session_name=name)
 
 
@@ -241,7 +241,7 @@ def alert_text(environment, min_seconds=30, verbosity=None):
 def event_message(environment, verbosity="expanded"):
     if environment.get("JCODE_HOOK_EVENT") == "turn_end":
         return alert_message(environment, 0, verbosity)
-    name = formatting.saved_session_name(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
+    name = formatting.chat_identity(config_path().parent, environment.get("JCODE_HOOK_SESSION_ID", ""))
     return formatting.render_lifecycle_message(environment, verbosity, alert_secrets(), session_name=name)
 
 
@@ -345,7 +345,7 @@ def preview_message(verbosity, session_id=None, event=None):
                  "JCODE_HOOK_CWD": session.get("working_dir"),
                  "JCODE_HOOK_LAST_ASSISTANT_TEXT": response[:4000]}
         prompt = formatting.session_prompt(config_path().parent, session_id, response[:4000])
-        name = formatting.saved_session_name(config_path().parent, session_id)
+        name = formatting.chat_identity(config_path().parent, session_id)
     else:
         event = formatting.sample_event()
         prompt = "Add selectable Telegram alert verbosity, default to expanded, and keep messages concise."
