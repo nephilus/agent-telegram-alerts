@@ -311,6 +311,8 @@ def render_selected_message(environment, secrets=(), *, session_name=""):
             units += size
         shortened = "".join(chars).rstrip() + "…"
     message = prepend_message(footer, header + shortened)
+    message["entities"].insert(0, {"type": "bold", "offset": utf16_length("🔔 "),
+                                    "length": utf16_length("Jcode update")})
     message["prompt_available"] = False
     return message
 

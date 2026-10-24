@@ -170,6 +170,15 @@ class SelectorIntegrationTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
         self.assertEqual(len(self.requests), 2)
 
+    def test_linkless_selected_update_has_confirmed_heading_formatting(self):
+        self.enable()
+        result = self.observe()
+        self.assertEqual(result["state"], "sent")
+        self.assertTrue(result["response_confirmed"])
+        self.assertTrue(result["formatting_confirmed"])
+        self.assertEqual(result["link_entities"], 0)
+        self.assertEqual(result["bold_entities"], 1)
+
     def test_selected_success_bypasses_old_duration_and_cooldown_only_for_completions(self):
         self.enable()
         self.assertEqual(self.observe()["state"], "sent")
