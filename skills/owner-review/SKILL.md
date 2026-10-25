@@ -5,7 +5,7 @@ description: "ADR writing, doc reviews and owner-dependent choices: Inbox questi
 
 # Owner review
 
-The global overlay supplies policy and triggers. This skill supplies mechanics, not a second policy copy. Reuse the installed Plannotator reference for uncommon flags and result/question schemas. Do not introduce a router or permanent service.
+The global overlay supplies policy and triggers. This skill supplies mechanics, not a second policy copy. Reuse the installed Plannotator reference for uncommon flags and result/question schemas. Do not introduce a router or custom service.
 
 ## Prepare the scoped revision
 
@@ -66,4 +66,4 @@ Before applying feedback, recompute the file hash and reject stale results on mi
 
 ## Inbox questions
 
-For owner-enabled projects, read [references/inbox.md](references/inbox.md) before connecting or retrieving replies. Read `plannotator inbox --help` for features. Questions only, not progress/completion summaries. Keep approval-required actions on the existing review route. No permanent service, automatic wake or cross-project default. Closed or held Inboxes stay off.
+Read [references/inbox.md](references/inbox.md) before using Inbox. Globally enabled for questions unless project instructions opt out or an operational hold applies. Reuse `plannotator-inbox` MCP; never duplicate servers. Read `plannotator inbox --help`. No progress/completion summaries or automatic wake. Keep approval-required actions on the existing review route.

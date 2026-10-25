@@ -49,23 +49,59 @@ Telegram gets attention. The answer belongs in Plannotator or the GitHub PR, not
 
 ## How agents discover Inbox
 
-The overlay names Inbox only for genuine owner-dependent small decisions, and only when enabled. The existing `owner-review` skill advertises Inbox questions and loads its [packaged reference](../skills/owner-review/references/inbox.md) on demand. The native `plannotator inbox --help` supplies feature/tool details. No new skill, Jcode core change or large system-prompt manual is needed.
+The overlay makes Inbox the global default for genuine owner-dependent small decisions. The existing `owner-review` skill advertises Inbox questions and loads its [packaged reference](../skills/owner-review/references/inbox.md) on demand. The native `plannotator inbox --help` supplies feature/tool details. No new skill, Jcode core change or large system-prompt manual is needed.
 
 This follows [Plannotator's documented pattern](https://plannotator.ai/docs/reference/inbox/): a tool connection, a short reminder and the agent guide. Jcode uses the generic stdio MCP route, not the Claude Code/Pi/OpenCode native integrations. Its replies require explicit retrieval rather than automatic wake.
 
-Enablement requires an explicit owner/project instruction permitting Inbox startup. Installation is not enablement. Do not register an always-on MCP entry just to advertise the feature: the installed 0.28.23 shim starts a stopped Inbox even during initialization/tool discovery. A closed or held service must remain off, without a discovery smoke test. When enabled, connect on demand with the explicit project/session attribution in the reference. This awareness change alone neither starts Inbox nor adopts it across projects.
+## Global native MCP, authorized 2026-10-21
 
-## Closed pilot and authorized future use
+The owner explicitly requested global Inbox enablement on 2026-10-21. This supersedes the earlier pilot's OFF/no-persistent-entry restriction, not unrelated operational holds or the questions-only policy. Installation is not enablement for other adopters: this package still never writes MCP settings or starts Inbox automatically.
 
-The owner chose **Questions only** for this repository's [bounded pilot](plans/2026-10-20-remote-first-inbox-pilot.md). That pilot is closed and stays off unless explicitly re-enabled. Routine progress and completed-work summaries stay outside Inbox. This is not a cross-project default or permission for a permanent service. Approval-required reviews keep the existing document-review or GitHub route. The installed skill now includes the connection/reply procedure, with no checkout dependency. The steps below retain the pilot-specific observations.
+Merge this native entry into the existing `servers` object in `~/.jcode/mcp.json`, preserving all other servers. Resolve the actual installed binary path when PATH is unreliable. No wrapper, additional package or custom supervisor is required:
 
-For an explicitly authorized use:
+```json
+{
+  "servers": {
+    "plannotator-inbox": {
+      "command": "plannotator",
+      "args": ["inbox", "mcp"],
+      "env": {
+        "PLANNOTATOR_INBOX_CONNECT": "0",
+        "PLANNOTATOR_UPDATE_CHECK": "0",
+        "PLANNOTATOR_BROWSER": "none",
+        "PLANNOTATOR_AI": "disabled",
+        "PLANNOTATOR_INBOX_TAILSCALE": "1"
+      },
+      "shared": true,
+      "timeout_secs": 30
+    }
+  }
+}
+```
 
-1. Connect `plannotator inbox mcp` through Jcode's on-demand stdio connection. Set `PLANNOTATOR_INBOX_CONNECT=0` and `PLANNOTATOR_CWD` to this repository. Pass the originating `agent_session` and absolute `project_path` explicitly on message/reply calls. Do not add a persistent MCP entry or connect other agent products.
-2. Reuse a compatible Inbox, recording process ownership and existing Serve mappings. Publish with native `inbox --background --tailscale` for this run, not a saved Settings toggle. Require the configured exact review host and declared port, verify the real HTTPS root and intended project/question, then use the existing checked Telegram handoff. Do not forward a returned localhost URL or thread fragment.
-3. Ask only a genuine owner-dependent question, with context, choices, recommendation and room for a note. Save thread/message IDs, question revision, cursor and idempotency key privately. Keep working independently. Tell the owner to press **Send**, then resume this chat with **check my Inbox reply** if its turn has ended.
-4. Use native `wait_for_reply` with the saved IDs and `timeout_seconds=25` at a useful boundary. Pending is not permission; do not poll continuously. This Jcode client exposes the actual reply in that tool's text, whereas `read_thread` displays counts. Match the exact question/revision before applying its scoped answer. Acknowledged, skipped, empty or stale responses do not settle the question. No automatic wake is available.
-5. After resolution, preserve the messages and private receipt. Stop only the owned temporary process/publication, disconnect only the pilot MCP and verify other mappings remain intact. Never stop a reused service this pilot does not own.
+Native MCP initialization starts/reuses the machine's background Inbox. The Tailscale environment setting requests native owner-checked publication on startup, not Funnel or a manual proxy. For an already-running local-only Inbox, explicitly use native `plannotator inbox --background --tailscale`. Preserve other Serve mappings. A project opt-out prevents project calls, not global service startup. A machine-wide OFF hold needs its auto-connect entry disabled before discovery.
+
+Fresh Jcode processes read the global entry. An already-running process may have cached its earlier server list: connect only this server with the same native settings, or wait for the next normal Jcode start. Do not restart shared Jcode services for this change. `jcode mcp list` checks configuration; `jcode mcp test plannotator-inbox` performs real initialization/tool discovery and therefore can start Inbox. Do not run it during an Inbox OFF hold. Do not reload unrelated servers.
+
+Pass the originating `agent_session` and absolute `project_path` on every applicable call. Do not freeze one project or session in a shared server environment. Keep **Questions only**: routine progress and completed-work summaries stay outside Inbox. Approval-required reviews retain the existing document-review or GitHub route.
+
+For a genuine question, follow the reference's context/choices/recommendation, configured exact review host, verified HTTPS root and checked Telegram attention handoff. Never forward a localhost URL or thread fragment. Save thread/message IDs, question revision, cursor and idempotency key privately. Tell the owner to press **Send**, then return to the originating chat with **check my Inbox reply** if its turn ended.
+
+Use `wait_for_reply` with saved IDs and `timeout_seconds=25` at useful boundaries; do not poll continuously. No automatic wake is available in generic Jcode MCP. Read actual reply text and match the exact question/revision. Acknowledged, skipped, empty or stale replies are not approval. Leave the shared Inbox available after resolution rather than stopping it after each question.
+
+The [bounded pilot](plans/2026-10-20-remote-first-inbox-pilot.md) remains archived, including the owner's actual Questions-only answer. Global enablement does not reopen its messages. To roll back this setup, remove only the Inbox MCP entry and restore the matching private guidance backup. Stop the shared service only with authority and after checking other users; never reset unrelated Serve mappings.
+
+### Observed setup checks, 2026-10-21
+
+| Requirement | Actual check and result |
+| --- | --- |
+| Global native configuration | `jcode mcp list` recognized Inbox; all five preexisting server definitions remained identical. |
+| Working tool connection | `jcode mcp test plannotator-inbox` initialized, discovered eight tools and disconnected cleanly. The current session connected separately and completed `list_decisions` with explicit originating session/project. |
+| Remote-first availability | Native startup published its owner-checked Tailscale endpoint. An HTTPS GET returned the Inbox UI with status 200 on the configured exact review host; all preexisting Serve mappings were preserved. |
+| Discoverable installed guidance | Real wheel, source archive and fresh installation contained three byte-exact guidance assets. The live copies matched, the relative skill reference resolved, and only `owner-review` was reloaded. |
+| Regression and preservation | The 251-test suite passed with one existing skip. Four protected settings files stayed byte-identical; no runtime Python modules or dependencies changed. |
+
+No new owner question, Telegram test message, automatic reply wake or model benchmark was introduced. Another device's access and a new owner reply were not exercised in this setup check. Existing chats may need the scoped connection described above; no shared Jcode restart was performed.
 
 ## Boundaries and rollback
 

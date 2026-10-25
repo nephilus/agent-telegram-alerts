@@ -117,52 +117,64 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             self.assertTrue(all(host == "device.tailnet.ts.net" for host in hosts))
             self.assertNotIn("\u2014", text)
 
-    def test_inbox_discovery_preserves_questions_only_opt_in(self):
-        self.assertIn("prefer Plannotator Inbox when enabled, otherwise a question card", self.overlay)
+    def test_inbox_discovery_preserves_questions_only_global_default(self):
+        self.assertIn("Plannotator Inbox is enabled globally for genuine owner-dependent small decisions unless a project opts out", self.overlay)
         self.require(self.skill, [
-            "owner-enabled projects", "[references/inbox.md](references/inbox.md)",
-            "`plannotator inbox --help`", "Questions only, not progress/completion summaries",
+            "Globally enabled for questions", "[references/inbox.md](references/inbox.md)",
+            "`plannotator inbox --help`", "No progress/completion summaries or automatic wake",
             "approval-required actions on the existing review route",
-            "No permanent service, automatic wake or cross-project default",
-            "Closed or held Inboxes stay off",
+            "project instructions opt out or an operational hold applies",
+            "Reuse `plannotator-inbox` MCP; never duplicate servers",
         ])
         self.assertNotIn("repository checkout's", self.skill)
         self.require(self.workflow, [
             "**Questions only**", "completed-work summaries stay outside Inbox",
-            "on-demand stdio", "PLANNOTATOR_INBOX_CONNECT=0", "PLANNOTATOR_CWD",
             "`agent_session`", "`project_path`", "configured exact review host",
             "localhost URL or thread fragment", "question revision, cursor and idempotency key",
             "**Send**", "**check my Inbox reply**", "`timeout_seconds=25`",
             "do not poll continuously", "exact question/revision",
             "Acknowledged, skipped, empty or stale", "No automatic wake",
-            "Never stop a reused service this pilot does not own",
-            "Installation is not enablement", "without a discovery smoke test",
+            "Leave the shared Inbox available after resolution",
+            "Installation is not enablement", "not unrelated operational holds",
+            "Global enablement does not reopen its messages",
+            "remove only the Inbox MCP entry",
         ])
 
-    def test_inbox_reference_does_not_start_discovery_during_hold(self):
+    def test_inbox_reference_distinguishes_project_opt_out_from_global_startup(self):
         self.require(self.inbox, [
-            "owner or project instructions explicitly permit Inbox use and startup",
-            "An installed binary, visible tool or this skill alone is not permission",
-            "operational hold stays off until explicitly released",
-            "Do not connect, run `jcode mcp test`",
-            "even MCP initialization and tool listing start it",
-            "Do not add permanent MCP configuration",
+            "owner enabled native Inbox globally on 2026-10-21",
+            "Explicit project opt-outs forbid that project's calls, not machine-wide service startup",
+            "Operational holds retain their scope",
+            "Initialization/tool listing can start Inbox",
+            "OFF hold therefore requires disabling its auto-connect entry before discovery",
+            "Never test or connect an OFF service",
+            "Do not restart shared Jcode services, reload unrelated servers or auto-connect other agent products",
             "actual originating `agent_session` and absolute `project_path`",
+            "Do not pin one project/session in the global environment",
             "**no automatic wake**", "`timeout_seconds=25`", "Do not poll continuously",
             "actual returned reply text", "exact question/revision",
             "Acknowledged, skipped, empty or stale", "Workers report to their coordinator",
-            "Never stop a reused service you do not own",
+            "never stop it or remove its publication merely because one question finished",
         ])
 
-    def test_inbox_connection_example_is_on_demand_and_project_explicit(self):
+    def test_inbox_connection_example_reuses_configured_global_server(self):
         example = re.search(r"```json\n(.*?)\n```", self.inbox, re.S).group(1)
         connection = json.loads(example)
-        self.assertEqual(connection["action"], "connect")
-        self.assertEqual(connection["args"], ["inbox", "mcp"])
-        self.assertEqual(connection["env"]["PLANNOTATOR_INBOX_CONNECT"], "0")
-        self.assertEqual(connection["env"]["PLANNOTATOR_CWD"], "ABSOLUTE_PROJECT_PATH")
-        self.assertEqual(connection["env"]["PLANNOTATOR_AI"], "disabled")
-        self.assertNotIn("url", connection)
+        self.assertEqual(connection, {"action": "connect", "server": "plannotator-inbox"})
+
+    def test_global_native_configuration_has_no_fixed_project_or_session(self):
+        example = re.search(r"```json\n(.*?)\n```", self.workflow, re.S).group(1)
+        server = json.loads(example)["servers"]["plannotator-inbox"]
+        self.assertEqual(server["command"], "plannotator")
+        self.assertEqual(server["args"], ["inbox", "mcp"])
+        self.assertEqual(server["env"], {
+            "PLANNOTATOR_INBOX_CONNECT": "0", "PLANNOTATOR_UPDATE_CHECK": "0",
+            "PLANNOTATOR_BROWSER": "none", "PLANNOTATOR_AI": "disabled",
+            "PLANNOTATOR_INBOX_TAILSCALE": "1",
+        })
+        self.assertIs(server["shared"], True)
+        self.assertEqual(server["timeout_secs"], 30)
+        self.assertIn("every applicable call", self.workflow)
 
     def test_installed_skill_reference_is_declared_as_a_package_asset(self):
         config = tomllib.loads((ROOT / "pyproject.toml").read_text())
@@ -172,6 +184,9 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         self.assertEqual(assets[destination], [reference])
         self.assertTrue((ROOT / reference).is_file())
         self.assertIn("~/.jcode/skills/owner-review/references/inbox.md", self.workflow)
+        validation = (ROOT / ".github/actions/validate/action.yml").read_text()
+        self.assertIn('assert "Global connection and scope" in reference.read_text()', validation)
+        self.assertIn("Global connection and scope", self.inbox)
 
 
 if __name__ == "__main__":
