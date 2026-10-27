@@ -238,7 +238,8 @@ class SelectorIntegrationTests(unittest.TestCase):
             app.main()
         self.assertEqual(len(self.calls), 1)
         self.assertIn("Choose option A or B", self.calls[0][1]["text"])
-        self.assertIn("🏷 Session: automatic-animal\n", self.calls[0][1]["text"])
+        self.assertNotIn("🏷 Session:", self.calls[0][1]["text"])
+        self.assertNotIn("automatic-animal", self.calls[0][1]["text"])
 
     def test_selector_cli_queries_read_only_and_off_never_restores_unfiltered_pushes(self):
         self.enable()

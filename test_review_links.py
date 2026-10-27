@@ -27,7 +27,7 @@ class ReviewLinksTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.home = Path(temporary.name)
-        self.env = {'JCODE_SESSION_ID': 'session_review_test'}
+        self.env = {}
         self.url = f'https://{self.host}:{self.port}/'
         self.request = {'context': 'Review context', 'needs_you': 'Review this document',
                         'links': [{'label': 'Review', 'url': self.url}]}
@@ -263,7 +263,7 @@ class ReviewLinksTests(unittest.TestCase):
         self.configure()
         lock = self.home / 'notifications' / '.telegram-review.lock'
         lock.unlink()
-        for changes in ({'environment': {}}, {'key': ''}, {'key': 'invalid key'},
+        for changes in ({'key': ''}, {'key': 'invalid key'},
                         {'destination_fingerprint': 'bad'}, {'resend': 1}):
             options = {'home': self.home, 'environment': self.env, 'request': self.request,
                        'key': 'review', 'deliver': lambda *_: self.fail('transport called'),

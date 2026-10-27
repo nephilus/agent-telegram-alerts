@@ -391,7 +391,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog=(
         "attention --key REPO:DECISION:REVISION reads JSON from stdin: required context "
         "(400 chars), needs_you (800); optional recommendation (600), links "
-        "(up to 3 label/url objects, labels 80 chars). Runs in Jcode using JCODE_SESSION_ID. "
+        "(up to 3 label/url objects, labels 80 chars). Available to any caller; JCODE_SESSION_ID is optional and only affects configured session filters. "
         "Sends a fresh message outside routine cooldowns; reuse the key for duplicates. "
         "Use --resend only for an explicit owner resend request. No automatic retries. "
         "review-host [HOST|off] queries read-only, trusts one exact lower-case ASCII "
@@ -501,8 +501,9 @@ def main():
         try:
             request = alert_attention.read_request(sys.stdin)
             token, chat = credentials()
-            environment = {"JCODE_SESSION_ID": os.environ.get("JCODE_SESSION_ID"),
-                           "JCODE_HOOK_CWD": os.getcwd()}
+            environment = {"JCODE_HOOK_CWD": os.getcwd()}
+            if "JCODE_SESSION_ID" in os.environ:
+                environment["JCODE_SESSION_ID"] = os.environ["JCODE_SESSION_ID"]
             destination = hashlib.sha256((token + "\0" + chat).encode()).hexdigest()
 
             def deliver(method, body):
