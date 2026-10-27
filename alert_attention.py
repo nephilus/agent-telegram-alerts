@@ -160,10 +160,7 @@ def render(request, environment, home, secrets=(), *, review_port=None):
         text += value
 
     append("Jcode needs you", bold=True)
-    session = environment.get("JCODE_SESSION_ID", "")
-    name = formatting.session_label(formatting.chat_identity(home, session), secrets=secrets)
-    if name:
-        append("\n🏷 Session: " + name)
+    # Explicit attention is agent-agnostic; never fetch or display a Jcode session name.
     append("\n📁 " + formatting.folder_label({"JCODE_HOOK_CWD": environment.get("JCODE_HOOK_CWD")}, secrets=secrets))
     for icon, title, value in (("👉", "Needs you", needed), ("🧭", "Context", context),
                                 ("✅", "Recommended", recommendation)):
@@ -194,10 +191,7 @@ def _state(value):
     return value
 
 
-def _publish_options(environment, key, destination_fingerprint, resend):
-    session = environment.get("JCODE_SESSION_ID")
-    if not isinstance(session, str) or not re.fullmatch(r"session_[A-Za-z0-9_-]{1,180}", session):
-        raise AttentionError("Attention requires JCODE_SESSION_ID from a Jcode tool invocation.")
+def _publish_options(key, destination_fingerprint, resend):
     if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,199}", key):
         raise AttentionError("Attention --key must be a stable decision/revision identifier of 1-200 ASCII characters.")
     if (not isinstance(destination_fingerprint, str) or not policy._HEX.fullmatch(destination_fingerprint)
@@ -206,7 +200,7 @@ def _publish_options(environment, key, destination_fingerprint, resend):
 
 
 def publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False, review_port=None):
-    _publish_options(environment, key, destination_fingerprint, resend)
+    _publish_options(key, destination_fingerprint, resend)
     options = {'secrets': secrets, 'resend': resend, 'review_port': review_port}
     if review_port is None:
         return _publish(home, environment, request, key, deliver, destination_fingerprint, **options)

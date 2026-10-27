@@ -127,7 +127,7 @@ Only conservative ASCII HTTPS destinations are accepted. Query strings, fragment
 
 ## Explicit attention when the owner is needed
 
-Routine alerts stay unchanged. When an agent genuinely needs owner input, it can run this command through Jcode's normal bash tool, **before waiting**:
+Routine alerts stay unchanged. When an agent genuinely needs owner input, it can run this command from any shell or agent tool, **before waiting**:
 
 ```sh
 jcode-telegram attention --key example/project:review:reviewed-head-sha <<'JSON'
@@ -142,7 +142,7 @@ JSON
 
 This is an illustrative shape, not a real pending request or a verified destination. The agent must supply the actual published revision and verify that the intended reviewer can access it. The command validates URL syntax offline; it does not fetch or prove publication, public visibility or authorization.
 
-The command requires the native `JCODE_SESSION_ID` environment variable and displays the command's current working directory, which may differ from the session's original folder. An explicit saved session name is included when safely readable. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, the optional owner workflow presents a Plannotator question card; the alert carries its precise request, recommendation and verified link.
+The command works with or without the native `JCODE_SESSION_ID` environment variable and displays the command's current working directory. A supplied session ID is used only by configured include/exclude filters; if an include list is active without a matching ID, delivery fails closed. Neither the ID nor a saved session name is displayed. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, the optional owner workflow presents a Plannotator question card; the alert carries its precise request, recommendation and verified link.
 
 Attention uses its own bounded layout, not the routine verbosity profiles. It rejects oversized messages rather than cutting a decision or link. It sends a fresh message with normal notification requested, bypassing routine duration thresholds, completion cooldowns and status-card edits. It still respects a disabled native Telegram channel and session include/exclude filters. It never changes those settings. Telegram/phone mute settings can still prevent a visible or audible notification.
 

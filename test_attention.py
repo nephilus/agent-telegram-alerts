@@ -76,17 +76,22 @@ class AttentionTests(unittest.TestCase):
                 policy.save_policy(self.home, {"include_sessions": [], "exclude_sessions": [], **changes})
                 with self.assertRaisesRegex(attention.AttentionError, "session filters"):
                     self.publish()
+        with self.assertRaisesRegex(attention.AttentionError, "session filters"):
+            attention.publish(self.home, {"JCODE_HOOK_CWD": "sample-project"}, self.request,
+                              "example/project:review:revision1", self.deliver, "a" * 64)
         self.assertEqual(self.deliveries, [])
         self.assertFalse((self.home / "notifications" / attention.STATE_FILE).exists())
 
-    def test_named_session_and_unicode_entities_use_exact_utf16_ranges(self):
+    def test_session_name_is_omitted_and_unicode_entities_use_exact_utf16_ranges(self):
         (self.home / "sessions").mkdir()
         (self.home / "sessions" / (self.environment["JCODE_SESSION_ID"] + ".json")).write_text(json.dumps({
             "id": self.environment["JCODE_SESSION_ID"], "custom_title": "Useful rollout name", "messages": []}))
         self.request["needs_you"] = "Choose 🐝 A or B."
         self.publish()
         message = self.deliveries[0][1]
-        self.assertIn("Useful rollout name", message["text"])
+        self.assertNotIn("Useful rollout name", message["text"])
+        self.assertNotIn("🏷 Session:", message["text"])
+        self.assertNotIn(self.environment["JCODE_SESSION_ID"], message["text"])
         self.assertIn("sample-project", message["text"])
         self.assertIn("Context:", message["text"])
         self.assertIn("Needs you:", message["text"])
@@ -131,15 +136,23 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(self.deliveries, [])
         self.assertEqual(list(self.home.iterdir()), [])
 
-    def test_session_identity_and_keys_are_required_not_guessed(self):
-        for session in (None, "", "other", "../sessions", 12):
-            with self.subTest(session=session), self.assertRaises(attention.AttentionError):
-                attention.publish(self.home, {**self.environment, "JCODE_SESSION_ID": session}, self.request,
-                                  "stable", self.deliver, "a" * 64)
+    def test_session_identity_is_optional_but_keys_are_required(self):
+        sessions = (None, "", "ordinary-agent-fixture", "../private-session", 12)
+        for index, session in enumerate(sessions):
+            with self.subTest(session=session):
+                environment = {**self.environment, "JCODE_SESSION_ID": session}
+                result = attention.publish(self.home, environment, self.request,
+                                           f"example/project:optional-session:revision{index}",
+                                           self.deliver, "a" * 64)
+                self.assertEqual(result["state"], "sent")
+                message = self.deliveries[-1][1]["text"]
+                self.assertNotIn("🏷 Session:", message)
+                if isinstance(session, str) and session:
+                    self.assertNotIn(session, message)
         for key in (None, "", "x" * 201, "with spaces", "line\nbreak", 12):
             with self.subTest(key=key), self.assertRaises(attention.AttentionError):
                 attention.publish(self.home, self.environment, self.request, key, self.deliver, "a" * 64)
-        self.assertEqual(self.deliveries, [])
+        self.assertEqual(len(self.deliveries), len(sessions))
 
     def test_unicode_overflow_is_rejected_not_silently_clipped(self):
         self.request.update(context="🐝" * 400, needs_you="🐝" * 800, recommendation="🐝" * 600)
@@ -210,8 +223,11 @@ class AttentionTests(unittest.TestCase):
                 attention.read_request(io.StringIO(raw))
         self.assertEqual(attention.read_request(io.StringIO(json.dumps(self.request))), self.request)
 
-    def run_cli(self, *extra):
-        with patch.dict(os.environ, {"JCODE_HOME": str(self.home), "JCODE_SESSION_ID": self.environment["JCODE_SESSION_ID"]}), \
+    def run_cli(self, *extra, session_id="session_attention_fixture"):
+        environment = {"JCODE_HOME": str(self.home)}
+        if session_id is not None:
+            environment["JCODE_SESSION_ID"] = session_id
+        with patch.dict(os.environ, environment, clear=True), \
                 patch.object(sys, "argv", ["jcode-telegram", "attention", "--key", "example/project:review:revision1", *extra]), \
                 patch.object(sys, "stdin", io.StringIO(json.dumps(self.request))), \
                 patch.object(app, "api", side_effect=lambda token, method, body: self.deliver(method, body)), \
@@ -230,6 +246,18 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(len(self.deliveries), 2)
         self.assertEqual(config.read_text(), original)
         self.assertEqual(self.deliveries[0][1]["chat_id"], "test-destination")
+
+    def test_cli_attention_succeeds_without_jcode_session_id_and_omits_session_name(self):
+        config = self.home / "config.toml"
+        config.write_text('[safety]\ntelegram_enabled = true\ntelegram_bot_token = "test-placeholder"\ntelegram_chat_id = "test-destination"\n')
+        code, output, errors = self.run_cli(session_id=None)
+        self.assertEqual((code, errors), (0, ""))
+        self.assertEqual(json.loads(output)["state"], "sent")
+        message = self.deliveries[0][1]["text"]
+        self.assertIn("A staged rollout needs owner review.", message)
+        self.assertIn("Review the proposed change before rollout.", message)
+        self.assertNotIn("🏷 Session:", message)
+        self.assertNotIn("session_attention_fixture", message)
 
     def test_disabled_channel_cannot_be_overridden_by_attention(self):
         (self.home / "config.toml").write_text('[safety]\ntelegram_enabled = false\ntelegram_bot_token = "test-placeholder"\ntelegram_chat_id = "test-destination"\n')
@@ -253,6 +281,8 @@ class AttentionTests(unittest.TestCase):
                                 env={**os.environ, "JCODE_HOME": str(self.home)}, capture_output=True, text=True, check=True)
         self.assertIn("needs_you", result.stdout)
         self.assertIn("--resend", result.stdout)
+        self.assertIn("JCODE_SESSION_ID", result.stdout)
+        self.assertIn("optional", result.stdout)
         self.assertEqual(list(self.home.iterdir()), [])
 
 
