@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 import urllib.error
 
-import jcode_telegram as app
+import telegram_alerts as app
 
 TOKEN = "123456:" + "a" * 35
 
@@ -32,7 +32,7 @@ class TelegramTests(unittest.TestCase):
         self.assertTrue(tomllib.loads(app.update_safety("", changes))["safety"]["telegram_enabled"])
 
     def test_config_and_backup_are_private(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
             path = Path(directory) / "config.toml"
             path.write_text('[safety]\ntelegram_enabled = false\n')
             app.save_safety({"telegram_enabled": True, "telegram_bot_token": TOKEN})
@@ -42,8 +42,60 @@ class TelegramTests(unittest.TestCase):
             self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
             self.assertFalse(tomllib.loads(backups[0].read_text())["safety"]["telegram_enabled"])
 
+    def test_legacy_telegram_credentials_are_read_only_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / ".jcode"
+            legacy.mkdir()
+            legacy_path = legacy / "config.toml"
+            original = ('[safety]\ntelegram_enabled = true\ntelegram_bot_token = "' + TOKEN +
+                        '"\ntelegram_chat_id = "42"\ntelegram_reply_enabled = false\n')
+            legacy_path.write_text(original)
+            generic = root / ".config" / "telegram-alerts"
+            with patch.object(Path, "home", return_value=root), patch.dict(os.environ, {}, clear=True), \
+                    patch.object(app, "_legacy_config_notice_emitted", False), \
+                    patch("sys.stderr", new_callable=io.StringIO) as errors:
+                self.assertEqual(app.config_path(), generic / "config.toml")
+                self.assertEqual(app.credentials(), (TOKEN, "42"))
+                self.assertFalse((generic / "config.toml").exists())
+                self.assertEqual(legacy_path.read_text(), original)
+                self.assertIn("~/.jcode/", errors.getvalue())
+                self.assertIn("read-only", errors.getvalue())
+                app.save_safety({"telegram_enabled": False})
+                self.assertTrue((generic / "config.toml").is_file())
+                self.assertEqual(legacy_path.read_text(), original)
+
+    def test_explicit_generic_home_and_disable_do_not_fall_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / ".jcode"
+            legacy.mkdir()
+            (legacy / "config.toml").write_text(
+                '[safety]\ntelegram_enabled = true\ntelegram_bot_token = "' + TOKEN +
+                '"\ntelegram_chat_id = "42"\n')
+            generic = root / ".config" / "telegram-alerts"
+            generic.mkdir(parents=True)
+            (generic / "config.toml").write_text('[safety]\ntelegram_enabled = false\n')
+            with patch.object(Path, "home", return_value=root), patch.dict(
+                    os.environ, {"TELEGRAM_ALERTS_HOME": str(generic)}, clear=True), \
+                    patch.object(app, "_legacy_config_notice_emitted", False), \
+                    patch("sys.stderr", new_callable=io.StringIO) as errors:
+                self.assertFalse(app.load_config()["safety"]["telegram_enabled"])
+                self.assertEqual(errors.getvalue(), "")
+
+    def test_legacy_cli_forwards_to_the_same_cli_without_changing_home(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {"TELEGRAM_ALERTS_HOME": directory}, clear=True), \
+                patch.object(app, "cli", return_value=7) as run_cli:
+            argv = ["jcode-telegram", "attention", "--key", "example/project:review:revision"]
+            with patch.object(app.sys, "argv", argv):
+                self.assertEqual(app.legacy_cli(), 7)
+                self.assertIs(app.sys.argv, argv)
+            run_cli.assert_called_once_with()
+            self.assertEqual(app.config_path().parent, Path(directory))
+
     def test_rejects_config_symlink(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
             target = Path(directory) / "real.toml"
             target.write_text("")
             (Path(directory) / "config.toml").symlink_to(target)
@@ -52,22 +104,25 @@ class TelegramTests(unittest.TestCase):
             self.assertEqual(target.read_text(), "")
 
     def test_short_success_filtered_boundary_and_failure_allowed(self):
-        event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "ok", "JCODE_HOOK_DURATION_MS": "29999"}
-        self.assertIsNone(app.alert_text(event))
-        event["JCODE_HOOK_DURATION_MS"] = "30000"
-        self.assertIn("finished", app.alert_text(event))
-        event.update(JCODE_HOOK_STATUS="error", JCODE_HOOK_DURATION_MS="0")
-        self.assertIn("failed", app.alert_text(event))
-        event["JCODE_HOOK_DURATION_MS"] = "bad"
-        self.assertIn("failed", app.alert_text(event))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
+            event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "ok", "JCODE_HOOK_DURATION_MS": "29999"}
+            self.assertIsNone(app.alert_text(event))
+            event["JCODE_HOOK_DURATION_MS"] = "30000"
+            self.assertIn("finished", app.alert_text(event))
+            event.update(JCODE_HOOK_STATUS="error", JCODE_HOOK_DURATION_MS="0")
+            self.assertIn("failed", app.alert_text(event))
+            event["JCODE_HOOK_DURATION_MS"] = "bad"
+            self.assertIn("failed", app.alert_text(event))
 
     def test_no_sensitive_event_contents_are_forwarded(self):
         event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error", "JCODE_HOOK_DURATION_MS": "1000", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN, "JCODE_HOOK_ERROR": TOKEN, "JCODE_HOOK_CWD": "/private/path"}
-        result = app.alert_text(event)
-        self.assertNotIn(TOKEN, result)
-        self.assertIn("📁 /private/path", result)
-        event["JCODE_HOOK_EVENT"] = "post_tool"
-        self.assertIsNone(app.alert_text(event))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
+            result = app.alert_text(event)
+            self.assertNotIn(TOKEN, result)
+            self.assertIn("📁 /private/path", result)
+            event["JCODE_HOOK_EVENT"] = "post_tool"
+            self.assertIsNone(app.alert_text(event))
 
     def test_http_failure_never_exposes_token(self):
         error = urllib.error.HTTPError(f"https://api.telegram.org/bot{TOKEN}/getMe", 401, "Unauthorized", {}, None)
@@ -99,7 +154,7 @@ class TelegramTests(unittest.TestCase):
             save.assert_not_called()
 
     def test_setup_verifies_private_challenge_and_test_before_save(self):
-        challenge = "/start jcode_fixedchallenge"
+        challenge = "/start telegram_alerts_fixedchallenge"
         def update(number, kind, text, who=42):
             return {"update_id": number, "message": {"text": text, "chat": {"id": 42, "type": kind}, "from": {"id": who}}}
         updates = [update(1, "private", "/start"), update(2, "group", challenge), update(3, "private", challenge, 99), update(4, "private", challenge)]
@@ -116,14 +171,14 @@ class TelegramTests(unittest.TestCase):
             saved.assert_called_once()
 
     def test_failed_delivery_never_enables_channel(self):
-        update = {"update_id": 1, "message": {"text": "/start jcode_fixed", "chat": {"id": 42, "type": "private"}, "from": {"id": 42}}}
+        update = {"update_id": 1, "message": {"text": "/start telegram_alerts_fixed", "chat": {"id": 42, "type": "private"}, "from": {"id": 42}}}
         with patch.object(app.sys.stdin, "isatty", return_value=True), patch.object(app.getpass, "getpass", return_value=TOKEN), patch.object(app.secrets, "token_hex", return_value="fixed"), patch.object(app, "api", side_effect=[{"username": "test_bot"}, {"url": ""}, [update], app.SetupError("send failed")]), patch.object(app, "save_safety") as save, patch("sys.stdout", new_callable=io.StringIO):
             with self.assertRaises(app.SetupError):
                 app.setup()
             save.assert_not_called()
 
     def test_missing_credentials_do_not_send_alert(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory, "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error"}), patch.object(app.sys, "argv", ["jcode-telegram", "alert"]), patch.object(app, "api") as send:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory, "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error"}), patch.object(app.sys, "argv", ["telegram-alerts", "alert"]), patch.object(app, "api") as send:
             app.main()
             send.assert_not_called()
             receipt = json.loads(app.receipt_path().read_text())
@@ -131,7 +186,7 @@ class TelegramTests(unittest.TestCase):
             self.assertEqual(app.receipt_path().stat().st_mode & 0o777, 0o600)
 
     def test_receipt_does_not_store_raw_session_or_contents(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory, "JCODE_HOOK_SESSION_ID": "private-session-id", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory, "JCODE_HOOK_SESSION_ID": "private-session-id", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN}):
             app.record_receipt("suppressed_short_or_unknown_turn")
             text = app.receipt_path().read_text()
             self.assertNotIn("private-session-id", text)

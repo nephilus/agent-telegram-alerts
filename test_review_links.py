@@ -16,7 +16,7 @@ from unittest.mock import patch
 import alert_attention as attention
 import alert_links
 import alert_policy as policy
-import jcode_telegram as app
+import telegram_alerts as app
 
 
 class ReviewLinksTests(unittest.TestCase):
@@ -303,8 +303,8 @@ class ReviewLinksTests(unittest.TestCase):
             calls.append((method, body))
             return {'message_id': 1, **body}
 
-        with patch.dict(os.environ, {'JCODE_HOME': str(self.home), **self.env}), \
-                patch.object(sys, 'argv', ['jcode-telegram', 'attention', '--key', 'review',
+        with patch.dict(os.environ, {'TELEGRAM_ALERTS_HOME': str(self.home), **self.env}), \
+                patch.object(sys, 'argv', ['telegram-alerts', 'attention', '--key', 'review',
                                           '--review-port', str(self.port)]), \
                 patch.object(sys, 'stdin', io.StringIO(json.dumps(self.request))), \
                 patch.object(app, 'api', side_effect=deliver), \
@@ -394,8 +394,8 @@ class ReviewLinksTests(unittest.TestCase):
             attention.review_host(self.home)
 
     def cli(self, *args):
-        with patch.dict(os.environ, {'JCODE_HOME': str(self.home)}), \
-                patch.object(sys, 'argv', ['jcode-telegram', *args]), \
+        with patch.dict(os.environ, {'TELEGRAM_ALERTS_HOME': str(self.home)}), \
+                patch.object(sys, 'argv', ['telegram-alerts', *args]), \
                 patch.object(app, 'api', side_effect=AssertionError('network called')), \
                 patch.object(app, 'credentials', side_effect=AssertionError('credentials read')), \
                 contextlib.redirect_stdout(io.StringIO()) as output, \
@@ -457,7 +457,7 @@ class ReviewLinksTests(unittest.TestCase):
         self.assertEqual(list(self.home.iterdir()), [])
 
     def test_invalid_cli_port_diagnostic_does_not_echo_input(self):
-        with patch.object(sys, 'argv', ['jcode-telegram', 'attention', '--key', 'review',
+        with patch.object(sys, 'argv', ['telegram-alerts', 'attention', '--key', 'review',
                                       '--review-port', 'PRIVATE_CANARY']), \
                 contextlib.redirect_stderr(io.StringIO()) as errors:
             with self.assertRaises(SystemExit):

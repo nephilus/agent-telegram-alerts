@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import alert_format as fmt
-import jcode_telegram as app
+import telegram_alerts as app
 from test_named_sessions import SESSION, event, saved
 from test_readability import bold_fragments
 
@@ -163,7 +163,7 @@ class ChatIdentityTests(unittest.TestCase):
 
     def test_routine_error_lifecycle_and_preview_read_unnamed_identity(self):
         saved(self.home, short_name="snail")
-        with patch.dict(os.environ, {"JCODE_HOME": str(self.home)}), patch.object(app, "api") as network:
+        with patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": str(self.home)}), patch.object(app, "api") as network:
             messages = [app.alert_message(event()), app.preview_message("expanded", SESSION),
                         app.alert_message(event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current failure"))]
             messages.extend(app.event_message(event(JCODE_HOOK_EVENT=kind))

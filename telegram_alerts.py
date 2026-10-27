@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unofficial event-aware Telegram alerts for Jcode. Python 3.11+, standard library only."""
+"""Generic Telegram delivery for agent alerts. Python 3.11+, standard library only."""
 import argparse
 import getpass
 import hashlib
@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 
 import alert_format as formatting
+import alert_home
 
 
 class SetupError(Exception):
@@ -25,7 +26,7 @@ class SetupError(Exception):
 
 def version():
     try:
-        return package_version("jcode-telegram-alerts")
+        return package_version("agent-telegram-alerts")
     except PackageNotFoundError:
         path = Path(__file__).with_name("version.txt")
         try:
@@ -36,15 +37,73 @@ def version():
 
 
 def config_path():
-    return Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode"))) / "config.toml"
+    return alert_home.home_path() / "config.toml"
+
+
+def legacy_cli():
+    """Compatibility entry point; forward argv unchanged through the same CLI."""
+    return cli()
+
+
+_legacy_config_notice_emitted = False
+
+
+def _telegram_credentials(safety):
+    return (isinstance(safety, dict) and safety.get("telegram_enabled") is True
+            and bool(safety.get("telegram_bot_token")) and bool(safety.get("telegram_chat_id")))
+
+
+def _legacy_notice():
+    global _legacy_config_notice_emitted
+    if not _legacy_config_notice_emitted:
+        print("Notice: reading legacy Telegram credentials from ~/.jcode/config.toml and compatible policy/dedup state from ~/.jcode/notifications/ (read-only); "
+              f"new writes remain under {config_path().parent}.", file=sys.stderr)
+        _legacy_config_notice_emitted = True
 
 
 def load_config():
     path = config_path()
     document = tomllib.loads(path.read_text()) if path.exists() else {}
-    if any(not isinstance(document.get(key, {}), dict) for key in ("safety", "hooks")):
-        raise ValueError("Invalid local configuration table.")
+    if not isinstance(document.get("safety", {}), dict):
+        raise ValueError("Invalid local safety configuration table.")
+    safety = document.get("safety", {})
+    if safety.get("telegram_enabled") is not False and not _telegram_credentials(safety):
+        legacy_home = alert_home.legacy_read_home()
+        if legacy_home is not None:
+            legacy_path = legacy_home / "config.toml"
+            if legacy_path.is_file() and not legacy_path.is_symlink():
+                legacy = tomllib.loads(legacy_path.read_text())
+                legacy_safety = legacy.get("safety", {})
+                if not isinstance(legacy_safety, dict):
+                    raise ValueError("Invalid legacy Telegram configuration table.")
+                if _telegram_credentials(legacy_safety):
+                    _legacy_notice()
+                    return {"safety": legacy_safety}
     return document
+
+
+def delivery_policy(home=None):
+    """Read current policy, using a read-only legacy fallback when still needed."""
+    import alert_attention
+    home = config_path().parent if home is None else Path(home)
+    legacy_home = alert_home.legacy_read_home()
+    if legacy_home is not None:
+        primary = home / "notifications" / alert_attention.policy.POLICY_FILE
+        legacy = legacy_home / "notifications" / alert_attention.policy.POLICY_FILE
+        if not os.path.lexists(primary) and os.path.lexists(legacy):
+            _legacy_notice()
+    return alert_attention._load_policy(home, legacy_home)
+
+
+def _note_legacy_attention_fallback(home, legacy_home):
+    if legacy_home is None:
+        return
+    import alert_attention
+    for name in (alert_attention.policy.POLICY_FILE, alert_attention.STATE_FILE):
+        if (not os.path.lexists(Path(home) / "notifications" / name)
+                and os.path.lexists(Path(legacy_home) / "notifications" / name)):
+            _legacy_notice()
+            return
 
 
 def api(token, method, values=None, timeout=15):
@@ -129,14 +188,14 @@ def credentials():
     token = safety.get("telegram_bot_token")
     chat = safety.get("telegram_chat_id")
     if not safety.get("telegram_enabled") or not token or not chat:
-        raise SetupError("Telegram is not linked yet. Run: jcode-telegram setup")
+        raise SetupError("Telegram is not configured in this home. Run: telegram-alerts setup")
     return token, str(chat)
 
 
 def setup():
     if not sys.stdin.isatty():
         raise SetupError("Run setup in your own terminal. The bot token is entered privately, not in this chat.")
-    print("Use a dedicated bot created with @BotFather /newbot. Do not paste its token into Jcode chat.")
+    print("Use a dedicated bot created with @BotFather /newbot. Do not paste its token into an agent conversation.")
     token = getpass.getpass("BotFather bot token (hidden): ").strip()
     if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{20,200}", token):
         raise SetupError("That does not look like a Telegram bot token.")
@@ -144,7 +203,7 @@ def setup():
     webhook = api(token, "getWebhookInfo")
     if webhook.get("url"):
         raise SetupError("This bot has an existing webhook. Use a dedicated bot. Nothing was changed.")
-    challenge = f"/start jcode_{secrets.token_hex(8)}"
+    challenge = f"/start telegram_alerts_{secrets.token_hex(8)}"
     print(f"\nIn Telegram, open @{me['username']} and send this exact message:\n\n{challenge}\n")
     print("Waiting up to 3 minutes to verify your private chat...")
     deadline, offset, chat = time.monotonic() + 180, None, None
@@ -164,12 +223,12 @@ def setup():
     if chat is None:
         raise SetupError("No matching private message arrived. Run setup again when Telegram is ready.")
     # A successful test is required before enabling the local channel.
-    api(token, "sendMessage", {"chat_id": chat, "text": "Jcode Telegram test: your private chat is linked. Outbound alerts only. Remote commands are disabled."})
+    api(token, "sendMessage", {"chat_id": chat, "text": "Telegram alerts test: your private chat is linked. Outbound alerts only. Remote commands are disabled."})
     save_safety({"telegram_enabled": True, "telegram_bot_token": token,
                  "telegram_chat_id": chat, "telegram_reply_enabled": False})
     print("Linked and test delivered. Config and backup are owner-readable only (0600).")
-    print("Alerts: qualifying completions, distinct turn errors, and separately configured native ambient/approval alerts.")
-    print("Completion alerts hot-reload. Restart Jcode normally when convenient to refresh any cached ambient channels.")
+    print("Use telegram-alerts attention for generic owner handoffs; legacy event alerts require an external hook adapter.")
+    print("Telegram credentials and alert state are private to this alerts home.")
 
 
 def settings_path():
@@ -265,7 +324,7 @@ def selected_completion(home, environment, token, chat, destination, verbosity, 
         # An off command completes only after an already-admitted send ends.
         # Never send using stale policy captured before a model request.
         with alert_policy._directory(home, create=True) as folder, alert_policy._locked(folder, ".telegram-policy-config.lock"):
-            current = alert_policy.load_policy(home)
+            current = delivery_policy(home)
             if current["completion_selector"] != "clef":
                 return {"state": "disabled", "kind": "completion"}
             selected = {**current, "cooldown_seconds": 0, "status_card": False}
@@ -305,7 +364,7 @@ def observe_event(environment, min_seconds=30, verbosity="expanded"):
             return api(token, method, {**body, "chat_id": chat})
 
         home = config_path().parent
-        policy = alert_policy.load_policy(home)
+        policy = delivery_policy(home)
         if (environment.get("JCODE_HOOK_EVENT") == "turn_end"
                 and environment.get("JCODE_HOOK_STATUS") == "ok"
                 and policy["completion_selector"] == "clef"):
@@ -388,38 +447,46 @@ def main():
             pass
         raise argparse.ArgumentTypeError('review port must be an integer from 1024 through 65535')
 
-    parser = argparse.ArgumentParser(description=__doc__, epilog=(
-        "attention --key REPO:DECISION:REVISION reads JSON from stdin: required context "
+    parser = argparse.ArgumentParser(prog="telegram-alerts", description=__doc__, epilog=(
+        "attention --key OWNER/REPO:DECISION:REVISION reads JSON from stdin: required context "
         "(400 chars), needs_you (800); optional recommendation (600), links "
-        "(up to 3 label/url objects, labels 80 chars). Available to any caller; JCODE_SESSION_ID is optional and only affects configured session filters. "
+        "(up to 3 label/url objects, labels 80 chars). No Jcode session or hook is required. "
+        "JCODE_SESSION_ID remains optional for legacy session filters only. "
         "Sends a fresh message outside routine cooldowns; reuse the key for duplicates. "
         "Use --resend only for an explicit owner resend request. No automatic retries. "
+        "Inbox links are rewritten only for the registry's exact loopback port, using tailscale.url; "
+        "path, query and fragment are preserved. Configure TELEGRAM_ALERTS_INBOX_REGISTRY or "
+        "TELEGRAM_ALERTS_INBOX_BASE_URL to override. Unmapped local links are omitted with a warning; "
+        "other loopback URLs are not rewritten. "
+        "The home defaults to ~/.config/telegram-alerts; TELEGRAM_ALERTS_HOME overrides it, "
+        "and legacy JCODE_HOME is still honored. "
         "review-host [HOST|off] queries read-only, trusts one exact lower-case ASCII "
         "device.tailnet.ts.net host, or disables review trust (default disabled). "
-        "It changes neither native config nor Telegram delivery policy and never sends. "
+        "It changes neither alert policy nor the read-only Plannotator registry and never sends. "
         "attention --review-port N declares a port (1024..65535) for this invocation only; "
         "requires at least one HTTPS root link to that exact configured host and port, "
         "without credentials, query, fragment or escapes. GitHub links may accompany it. "
-        "Routine URL extraction is unchanged. Syntax validation does not prove reachability."
+        "Routine URL extraction is unchanged. Syntax validation does not prove reachability. "
+        "The alert/event commands are legacy Jcode-hook inputs; new owner handoffs use attention and need no hook."
     ))
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
     parser.add_argument("command", choices=("setup", "status", "test", "alert", "event", "disable", "verbosity", "preview", "policy", "attention", "review-host", "selector"))
     parser.add_argument("value", nargs="?", help="verbosity level, delivery-policy preset, or review-host HOST|off")
     parser.add_argument("--min-seconds", type=int)
     parser.add_argument("--verbosity", choices=tuple(formatting.PROFILES), help="override the saved level for one invocation")
-    parser.add_argument("--session", help="use one saved session for a no-send preview")
+    parser.add_argument("--session", help="legacy Jcode preview: use one saved session without sending")
     parser.add_argument("--event", choices=("session_start", "turn_start", "completion", "error", "session_end"),
-                        help="lifecycle kind for a no-send illustrative preview")
+                        help="legacy Jcode lifecycle kind for a no-send illustrative preview")
     kinds = ("session_start", "turn_start", "completion", "error", "session_end")
-    parser.add_argument("--cooldown-seconds", type=int, help="policy: completion interval per session")
-    parser.add_argument("--error-repeat-seconds", type=int, help="policy: suppress repeats of the same error")
-    parser.add_argument("--status-card", choices=("on", "off"), help="policy: optional editable session card")
+    parser.add_argument("--cooldown-seconds", type=int, help="legacy event policy: completion interval per session")
+    parser.add_argument("--error-repeat-seconds", type=int, help="legacy event policy: suppress repeated errors")
+    parser.add_argument("--status-card", choices=("on", "off"), help="legacy event policy: optional editable session card")
     parser.add_argument("--enable", action="append", choices=kinds, help="policy: enable an event kind")
     parser.add_argument("--disable", action="append", choices=kinds, help="policy: disable an event kind")
     parser.add_argument("--silent", action="append", choices=kinds, help="policy: send an event without sound")
     parser.add_argument("--audible", action="append", choices=kinds, help="policy: allow sound for an event")
-    parser.add_argument("--include-session", action="append", help="policy: replace explicit included session IDs")
-    parser.add_argument("--exclude-session", action="append", help="policy: replace explicit excluded session IDs")
+    parser.add_argument("--include-session", action="append", help="legacy event policy: replace included session IDs")
+    parser.add_argument("--exclude-session", action="append", help="legacy event policy: replace excluded session IDs")
     parser.add_argument("--clear-session-filters", action="store_true", help="policy: clear explicit session filters")
     parser.add_argument("--key", help="attention: stable repository/decision/reviewed-revision identifier")
     parser.add_argument("--resend", action="store_true", help="attention: send again only when the owner explicitly requests it")
@@ -482,7 +549,7 @@ def main():
             # Disabling must never restore the unfiltered completion stream.
             alert_policy.save_policy(home, {"completion_selector": "off", "events": {"completion": False}})
         result = alert_selector.status(home)
-        policy = alert_policy.load_policy(home)
+        policy = delivery_policy(home)
         print(json.dumps({**result, "enabled": result.get("configured") is True and policy["completion_selector"] == "clef" and policy["events"]["completion"],
                           "mode": policy["completion_selector"],
                           "completion_enabled": policy["events"]["completion"]}, sort_keys=True))
@@ -501,10 +568,15 @@ def main():
         try:
             request = alert_attention.read_request(sys.stdin)
             token, chat = credentials()
-            environment = {"JCODE_HOOK_CWD": os.getcwd()}
+            environment = {"TELEGRAM_ALERTS_CWD": os.getcwd()}
             if "JCODE_SESSION_ID" in os.environ:
                 environment["JCODE_SESSION_ID"] = os.environ["JCODE_SESSION_ID"]
+            for name in (alert_attention.INBOX_REGISTRY_ENV, alert_attention.INBOX_BASE_ENV):
+                if name in os.environ:
+                    environment[name] = os.environ[name]
             destination = hashlib.sha256((token + "\0" + chat).encode()).hexdigest()
+            legacy_home = alert_home.legacy_read_home()
+            _note_legacy_attention_fallback(config_path().parent, legacy_home)
 
             def deliver(method, body):
                 try:
@@ -516,9 +588,12 @@ def main():
 
             receipt = alert_attention.publish(config_path().parent, environment, request, args.key,
                                               deliver, destination, secrets=(token, chat), resend=args.resend,
-                                              review_port=args.review_port)
+                                              review_port=args.review_port,
+                                              legacy_home=legacy_home)
         except alert_attention.AttentionError as error:
             raise SetupError(str(error)) from None
+        for warning in receipt.get("url_rewrite_warnings", []):
+            print("Warning: " + warning, file=sys.stderr)
         print(json.dumps(receipt, sort_keys=True))
         return
     if args.command == "policy":
@@ -551,7 +626,7 @@ def main():
             policy = alert_policy.save_policy(config_path().parent, changes,
                                               silent=args.silent or (), audible=args.audible or ())
         else:
-            policy = alert_policy.load_policy(config_path().parent)
+            policy = delivery_policy(config_path().parent)
         print(json.dumps(policy, indent=2, sort_keys=True))
         return
     level = selected_verbosity(args.verbosity)
@@ -572,21 +647,20 @@ def main():
         safety = load_config().get("safety", {})
         linked = bool(safety.get("telegram_enabled") and safety.get("telegram_bot_token") and safety.get("telegram_chat_id"))
         print("Telegram: " + ("configured locally (use 'test' to verify delivery)" if linked else "pending bot creation and private token entry"))
-        print("Remote commands: " + ("ENABLED" if safety.get("telegram_reply_enabled") else "disabled"))
+        print("Remote commands: disabled (not supported by this CLI)")
         print("Alert verbosity: " + level + f" (up to {formatting.PROFILES[level]['words']} words)")
-        import alert_policy
-        policy = alert_policy.load_policy(config_path().parent)
+        policy = delivery_policy(config_path().parent)
         print(f"Delivery policy: {policy['preset']}, completion interval {policy['cooldown_seconds']}s per session")
         print("Completion selector: " + policy["completion_selector"])
         print("Status card: " + ("on" if policy["status_card"] else "off"))
-        print("Completion hook: " + ("installed" if "jcode-telegram" in str(load_config().get("hooks", {}).get("turn_end", "")) else "not installed"))
+        print("Legacy event hooks: optional external integration")
         try:
             receipt = json.loads(receipt_path().read_text())
             if not isinstance(receipt, dict):
                 raise ValueError("Invalid local diagnostic receipt.")
-            print("Last hook observation: " + str(receipt.get("state")) + " at " + str(receipt.get("at")))
+            print("Last event receipt: " + str(receipt.get("state")) + " at " + str(receipt.get("at")))
         except (OSError, ValueError):
-            print("Last hook observation: none recorded yet")
+            print("Last event receipt: none recorded yet")
     elif args.command == "test":
         token, chat = credentials()
         message = formatting.prepend_message(preview_message(level), "Telegram verbosity preview (illustrative, not a real task result):\n\n")

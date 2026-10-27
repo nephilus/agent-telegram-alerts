@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "jcode-telegram-alerts",
+      "package-name": "agent-telegram-alerts",
       "version-file": "version.txt",
       "changelog-path": "CHANGELOG.md",
       "initial-version": "0.1.0",

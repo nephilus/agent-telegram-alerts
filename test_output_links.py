@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import alert_format as fmt
 import alert_policy as policy
-import jcode_telegram as app
+import telegram_alerts as app
 
 
 PR = "https://github.com/example/project/pull/42"
@@ -196,7 +196,7 @@ class OutputLinkTests(unittest.TestCase):
             self.assertEqual([e["url"] for e in link_entities(values)], [PR])
             self.assertEqual(values["link_preview_options"], {"is_disabled": True})
             return {"message_id": 7, "text": values["text"], "entities": values["entities"]}
-        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {**event(), "JCODE_HOME": home}), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {**event(), "TELEGRAM_ALERTS_HOME": home}), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge):
             app.observe_event(os.environ, min_seconds=0)
             receipt = json.loads(app.receipt_path().read_text())
             self.assertEqual(receipt["state"], "sent")

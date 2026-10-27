@@ -13,7 +13,7 @@ from unittest.mock import patch
 import alert_attention as attention
 import alert_format as formatting
 import alert_policy as policy
-import jcode_telegram as app
+import telegram_alerts as app
 
 
 class AttentionTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class AttentionTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.home = Path(self.temporary.name)
-        self.environment = {"JCODE_SESSION_ID": "session_attention_fixture", "JCODE_HOOK_CWD": "sample-project"}
+        self.environment = {"JCODE_SESSION_ID": "session_attention_fixture", "TELEGRAM_ALERTS_CWD": "sample-project"}
         self.request = {"context": "A staged rollout needs owner review.",
                         "needs_you": "Review the proposed change before rollout.",
                         "recommendation": "Use the staged option because it preserves rollback.",
@@ -69,6 +69,41 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(changed["state"], "sent")
         self.assertEqual(len(self.deliveries), 3)
 
+    def test_legacy_dedup_state_is_read_only_and_new_state_writes_use_generic_home(self):
+        legacy = self.home / "legacy"
+        notifications = legacy / "notifications"
+        notifications.mkdir(parents=True, mode=0o700)
+        key = "example/project:review:legacy-revision"
+        fingerprint = policy._hash("a" * 64 + "\0" + key)
+        state_path = notifications / attention.STATE_FILE
+        state_path.write_text(json.dumps({"version": 1, "requests": {
+            fingerprint: {"at": int(attention.time.time()), "message_id": 321}}}))
+        state_path.chmod(0o600)
+        original = state_path.read_bytes()
+        result = attention.publish(self.home, self.environment, self.request, key, self.deliver,
+                                   "a" * 64, legacy_home=legacy)
+        self.assertEqual(result, {"state": "already_sent", "telegram_message_id": 321})
+        self.assertEqual(state_path.read_bytes(), original)
+        self.assertFalse((self.home / "notifications" / attention.STATE_FILE).exists())
+        new_key = "example/project:review:new-revision"
+        self.assertEqual(attention.publish(self.home, self.environment, self.request, new_key,
+                                           self.deliver, "a" * 64, legacy_home=legacy)["state"], "sent")
+        self.assertTrue((self.home / "notifications" / attention.STATE_FILE).is_file())
+        self.assertEqual(state_path.read_bytes(), original)
+
+    def test_legacy_policy_filters_remain_read_only_and_fail_closed(self):
+        legacy = self.home / "legacy"
+        policy.save_policy(legacy, {"include_sessions": ["session_allowed"]})
+        policy_path = legacy / "notifications" / policy.POLICY_FILE
+        original = policy_path.read_bytes()
+        with self.assertRaisesRegex(attention.AttentionError, "session filters"):
+            attention.publish(self.home, self.environment, self.request,
+                              "example/project:legacy-policy:revision1", self.deliver,
+                              "a" * 64, legacy_home=legacy)
+        self.assertEqual(policy_path.read_bytes(), original)
+        self.assertFalse((self.home / "notifications" / attention.STATE_FILE).exists())
+        self.assertEqual(self.deliveries, [])
+
     def test_filters_fail_visibly_without_transport_or_state(self):
         for changes in ({"exclude_sessions": [self.environment["JCODE_SESSION_ID"]]},
                         {"include_sessions": ["session_other_fixture"]}):
@@ -77,7 +112,7 @@ class AttentionTests(unittest.TestCase):
                 with self.assertRaisesRegex(attention.AttentionError, "session filters"):
                     self.publish()
         with self.assertRaisesRegex(attention.AttentionError, "session filters"):
-            attention.publish(self.home, {"JCODE_HOOK_CWD": "sample-project"}, self.request,
+            attention.publish(self.home, {"TELEGRAM_ALERTS_CWD": "sample-project"}, self.request,
                               "example/project:review:revision1", self.deliver, "a" * 64)
         self.assertEqual(self.deliveries, [])
         self.assertFalse((self.home / "notifications" / attention.STATE_FILE).exists())
@@ -224,11 +259,11 @@ class AttentionTests(unittest.TestCase):
         self.assertEqual(attention.read_request(io.StringIO(json.dumps(self.request))), self.request)
 
     def run_cli(self, *extra, session_id="session_attention_fixture"):
-        environment = {"JCODE_HOME": str(self.home)}
+        environment = {"TELEGRAM_ALERTS_HOME": str(self.home)}
         if session_id is not None:
             environment["JCODE_SESSION_ID"] = session_id
         with patch.dict(os.environ, environment, clear=True), \
-                patch.object(sys, "argv", ["jcode-telegram", "attention", "--key", "example/project:review:revision1", *extra]), \
+                patch.object(sys, "argv", ["telegram-alerts", "attention", "--key", "example/project:review:revision1", *extra]), \
                 patch.object(sys, "stdin", io.StringIO(json.dumps(self.request))), \
                 patch.object(app, "api", side_effect=lambda token, method, body: self.deliver(method, body)), \
                 contextlib.redirect_stdout(io.StringIO()) as output, contextlib.redirect_stderr(io.StringIO()) as errors:
@@ -263,7 +298,7 @@ class AttentionTests(unittest.TestCase):
         (self.home / "config.toml").write_text('[safety]\ntelegram_enabled = false\ntelegram_bot_token = "test-placeholder"\ntelegram_chat_id = "test-destination"\n')
         code, output, errors = self.run_cli()
         self.assertEqual((code, output), (1, ""))
-        self.assertIn("not linked", errors)
+        self.assertIn("not configured", errors)
         self.assertNotIn("test-placeholder", errors)
         self.assertEqual(self.deliveries, [])
 
@@ -278,7 +313,7 @@ class AttentionTests(unittest.TestCase):
 
     def test_public_help_explains_stdin_schema_without_creating_state(self):
         result = subprocess.run([sys.executable, str(Path(app.__file__)), "attention", "--help"],
-                                env={**os.environ, "JCODE_HOME": str(self.home)}, capture_output=True, text=True, check=True)
+                                env={**os.environ, "TELEGRAM_ALERTS_HOME": str(self.home)}, capture_output=True, text=True, check=True)
         self.assertIn("needs_you", result.stdout)
         self.assertIn("--resend", result.stdout)
         self.assertIn("JCODE_SESSION_ID", result.stdout)

@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import alert_format as fmt
-import jcode_telegram as app
+import telegram_alerts as app
 
 
 def event(**changes):
@@ -124,7 +124,7 @@ class ReadabilityTests(unittest.TestCase):
             self.assertIn("🏷 Session: chat-", values["text"])
             return {"message_id": 123, "text": values["text"], "entities": values["entities"]}
 
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "JCODE_HOME": directory}), patch.object(app.sys, "argv", ["jcode-telegram", "alert"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge) as send:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "TELEGRAM_ALERTS_HOME": directory}), patch.object(app.sys, "argv", ["telegram-alerts", "alert"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge) as send:
             app.main()
             send.assert_called_once()
             receipt = json.loads(app.receipt_path().read_text())
@@ -137,7 +137,7 @@ class ReadabilityTests(unittest.TestCase):
             self.assertNotIn("SYNTHETIC_TOKEN", app.receipt_path().read_text())
 
     def test_test_command_preserves_bold_entities_after_notice(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"JCODE_HOME": directory}), patch.object(app.sys, "argv", ["jcode-telegram", "test"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", return_value={}) as send, contextlib.redirect_stdout(io.StringIO()):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}), patch.object(app.sys, "argv", ["telegram-alerts", "test"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", return_value={}) as send, contextlib.redirect_stdout(io.StringIO()):
             app.main()
             payload = send.call_args.args[2]
             self.assertTrue(payload["text"].startswith("Telegram verbosity preview (illustrative"))

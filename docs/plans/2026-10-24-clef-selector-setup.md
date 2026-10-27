@@ -1,33 +1,39 @@
-# Optional Clef completion selector: operator runbook
+# Legacy Jcode Clef completion selector: operator runbook
 
-This guide installs and enables the optional Clef gate for ordinary successful-turn Telegram updates. It is for operators building from the source in this PR. The feature is **not in published v0.6.1**. The package version string currently remains `0.6.1`, so version output alone cannot identify a selector-capable build.
+**Status: legacy Jcode event adapter only.** This runbook is retained for existing Jcode hook installations; it is not required for generic `telegram-alerts attention` or the `/telegram` skill, and it is not a recommended new setup. The generic writable home is `~/.config/telegram-alerts`; the read-only `~/.jcode/config.toml` fallback covers Telegram credentials only, not Jcode session files or Clef state. No settings are migrated automatically. `version.txt` is the package version source; verify feature help from the intended source/runtime rather than relying on an old release claim.
 
 ## Before you begin
 
-- Use the source checkout containing this feature, or a wheel built from that source. Installing the published v0.6.1 release does not provide the selector.
+For this legacy selector only, point the process at the existing Jcode profile so it can read session data. This environment setting changes no files:
+
+```sh
+export TELEGRAM_ALERTS_HOME="$HOME/.jcode"
+```
+
+- Use a source checkout or wheel that contains the selector. This optional legacy adapter is not required or exercised by generic `telegram-alerts attention`.
 - Python 3.11 or newer is required. Use an isolated environment and keep it at its installed path.
-- Identify the executable path saved in Jcode's hook commands. Install this build into the same environment that executable belongs to. A new shell wrapper or a different executable found first on `PATH` does not update an already-saved hook command.
+- This procedure applies only to an existing Jcode event-hook adapter. The generic CLI does not require it. Before running any command in this runbook, explicitly select the Jcode session/profile home with `export TELEGRAM_ALERTS_HOME="$HOME/.jcode"`; the generic default does not contain Jcode session files.
 - Confirm that the existing maintained Clef HTTPS origin, request-model alias, exact response backend identity, and API key are available to you. The endpoint is Clef's typed `/v1/systemone` API, not a generic OpenAI-compatible endpoint. This guide does not install a model service or change model routes.
-- If Telegram is already linked, leave its native credentials and settings alone. Do not rerun bot setup.
+- If Telegram is already linked, leave its existing credentials and settings alone. Do not rerun bot setup or copy a full Jcode config into the generic home.
 
 ## Install this source into the hook runtime
 
-For a new installation, create a dedicated environment and install the source checkout into it. Substitute an absolute, stable environment location. For an existing installation, use the Python executable belonging to the saved hook instead and run its `-m pip install .`; do not recreate or move the active environment:
+For an already-authorized legacy Jcode hook, install the source checkout into the executable's existing environment; do not register a new hook as part of generic Telegram setup:
 
 ```sh
-python3 -m venv "$HOME/.local/share/jcode-telegram-alerts/venv"
-"$HOME/.local/share/jcode-telegram-alerts/venv/bin/python" -m pip install .
+python3 -m venv "$HOME/.local/share/agent-telegram-alerts/venv"
+"$HOME/.local/share/agent-telegram-alerts/venv/bin/python" -m pip install .
 ```
 
 If installing a locally built wheel instead, use its absolute path with that same environment's `python -m pip install /absolute/path/to/package.whl`. Do not install only a shell wrapper. If Jcode's saved command points at another environment, install the source or wheel into that environment, or deliberately migrate the saved hook registration after inspecting it.
 
 Inspect the saved commands and hook ownership locally before changing registration. The managed ownership manifest is `notifications/telegram-hook.json`. Its exact JSON shapes are either `{"version":1,"command":"..."}` or `{"version":2,"commands":{"session_start":"...","turn_start":"...","turn_end":"...","session_end":"..."}}`; a version-2 commands object contains the registered events. Hook status reports registration ownership, not whether that command's runtime contains the selector.
 
-For a deliberate new managed registration, use the intended absolute executable and lifecycle events:
+If an owner explicitly elects to retain the legacy adapter, the deprecated hook installer requires an explicitly selected home and executable:
 
 ```sh
-"$HOME/.local/share/jcode-telegram-alerts/venv/bin/jcode-telegram-hook" install \
-  --command "$HOME/.local/share/jcode-telegram-alerts/venv/bin/jcode-telegram" \
+"$HOME/.local/share/agent-telegram-alerts/venv/bin/telegram-alerts-hook" install \
+  --command "$HOME/.local/share/agent-telegram-alerts/venv/bin/telegram-alerts" \
   --events lifecycle
 ```
 
@@ -40,12 +46,12 @@ Jcode may cache hook paths in active sessions. Upgrade the runtime those paths a
 Use the actual executable invoked by the saved hook command, not a similarly named command from your interactive `PATH`:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/jcode-telegram --help
-/absolute/path/to/hook-runtime/bin/jcode-telegram selector
-/absolute/path/to/hook-runtime/bin/jcode-telegram policy
+/absolute/path/to/hook-runtime/bin/telegram-alerts --help
+/absolute/path/to/hook-runtime/bin/telegram-alerts selector
+/absolute/path/to/hook-runtime/bin/telegram-alerts policy
 ```
 
-The help must expose `selector` and its selector options. `selector` must be recognized and return read-only state. `status` and `--version` are not feature probes: status can show installed hook ownership, and the version string remains `0.6.1` for this source build. If the executable rejects `selector`, stop and update the exact runtime before proceeding. A `preview` command can inspect ordinary formatting, but it does **not** exercise Clef selection or prove selector connectivity.
+The help must expose `selector` and its selector options. `selector` must be recognized and return read-only state. `status` is not a feature probe, and the version comes from `version.txt`; check the exact source/runtime rather than assuming a version implies selector support. If the executable rejects `selector`, stop and update the exact legacy runtime before proceeding. A `preview` command can inspect ordinary formatting, but it does **not** exercise Clef selection or prove selector connectivity.
 
 ## Prepare the key file
 
@@ -62,7 +68,7 @@ The file must be a regular file owned by the invoking user, mode `0600`, non-emp
 Run the following using the verified executable. Replace the example origin, key-file path, request alias, and exact response backend with the maintained deployment values. Do not put the key itself in this command.
 
 ```sh
-/absolute/path/to/hook-runtime/bin/jcode-telegram selector on \
+/absolute/path/to/hook-runtime/bin/telegram-alerts selector on \
   --endpoint https://decision.example.ts.net:9105 \
   --key-file /absolute/private/decision.key \
   --model maintained-alias \
@@ -79,9 +85,9 @@ The selector is disabled until configured. Enabling it configures the selector a
 After configuration, check the selector and delivery policy without changing them:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/jcode-telegram selector
-/absolute/path/to/hook-runtime/bin/jcode-telegram policy
-/absolute/path/to/hook-runtime/bin/jcode-telegram preview
+/absolute/path/to/hook-runtime/bin/telegram-alerts selector
+/absolute/path/to/hook-runtime/bin/telegram-alerts policy
+/absolute/path/to/hook-runtime/bin/telegram-alerts preview
 ```
 
 Read selector status as local readiness and collection counts, not proof of a live API call or Telegram delivery. It does not expose conversation text or credentials. The preview renders illustrative notification formatting only; it does not invoke Clef. Do not send test notifications merely to test classification.
@@ -105,14 +111,14 @@ Local PIR scheduling is specific to the deployment and is not built into this pa
 To stop ordinary completion updates while retaining errors, explicit attention, and the private selector evidence, run:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/jcode-telegram selector off
+/absolute/path/to/hook-runtime/bin/telegram-alerts selector off
 ```
 
 This quiets completions. It deliberately does not restore an unfiltered completion stream. It also does not erase collected evidence, disable errors, or disable explicit attention. Confirm with read-only `selector` and `policy` queries. Do not delete evidence or alter unrelated hooks as part of rollback.
 
 ## Troubleshooting
 
-- **`selector` is unavailable or `invalid_policy` appears:** the saved hook may still invoke an older runtime. Check the exact saved command and install this source into that executable's environment. `hook status` and an unchanged `0.6.1` version string do not prove feature support.
+- **`selector` is unavailable or `invalid_policy` appears:** the saved hook may still invoke an older runtime. Check the exact saved command and install this source into that executable's environment. Hook ownership status and a version string do not prove feature support.
 - **No selector records:** the event may not be an eligible successful root turn, source context may be unavailable/stale/ambiguous, the selector may be off, or the hook may not have reached the updated runtime. A zero count is not a semantic NO.
 - **Semantic NO:** a valid strict Clef Choice returned NO. It means quiet completion by policy, not a request failure.
 - **Failed or busy request:** inspect private local status/evidence through the established owner-only process. Failures and busy slots are not NO decisions. There are no automatic retries.
