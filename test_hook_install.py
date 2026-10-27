@@ -20,12 +20,12 @@ class HookInstallTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name)
-        self.env = patch.dict(os.environ, {"JCODE_HOME": str(self.home)})
+        self.env = patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": str(self.home)})
         self.env.start()
         self.addCleanup(self.env.stop)
         self.config = self.home / "config.toml"
         self.manifest = self.home / "notifications" / "telegram-hook.json"
-        self.exe = self.home / "bin space's" / "jcode-telegram"
+        self.exe = self.home / "bin space's" / "telegram-alerts"
         self.exe.parent.mkdir()
         self.exe.write_text("#!/bin/sh\nexit 0\n")
         self.exe.chmod(0o700)
@@ -175,7 +175,7 @@ class HookInstallTests(unittest.TestCase):
         self.assertEqual(self.config.read_text(), '# external edit\n')
 
     def test_default_sibling_and_fallback(self):
-        sibling = self.exe.parent / 'jcode-telegram-hook'
+        sibling = self.exe.parent / 'telegram-alerts-hook'
         with patch.object(sys, 'argv', [str(sibling)]), patch.object(hook.shutil, 'which') as which:
             self.assertEqual(shlex.split(hook._command(None, 30))[0], str(self.exe))
             which.assert_not_called()
@@ -386,6 +386,13 @@ class HookInstallTests(unittest.TestCase):
         self.assertEqual(self.doc()['hooks']['turn_start'], ['foreign'])
         self.assertTrue(all(not self.doc()['hooks'][event] for event in hook.EVENTS if event != 'turn_start'))
         self.assertFalse(self.manifest.exists())
+
+    def test_cli_refuses_implicit_generic_home_for_legacy_hooks(self):
+        stderr = io.StringIO()
+        with patch.dict(os.environ, {}, clear=True), redirect_stderr(stderr), redirect_stdout(io.StringIO()):
+            self.assertEqual(hook.cli(['install', '--command', str(self.exe)]), 2)
+        self.assertIn("explicit TELEGRAM_ALERTS_HOME", stderr.getvalue())
+        self.assertFalse(self.config.exists())
 
     def test_cli_defaults_and_v1_preservation(self):
         with redirect_stdout(io.StringIO()):

@@ -13,7 +13,7 @@ The simple release-please manifest tracks the root package. `version.txt` is the
 ## Release flow
 
 1. Merge an approved conventional PR into `main`.
-2. The release workflow first runs unit tests, builds the wheel and sdist, installs the wheel in a temporary virtual environment, and smoke-tests both CLIs. Only after this succeeds does release-please create or update a release PR.
+2. The release workflow first runs unit tests, builds the wheel and sdist, installs the wheel in a temporary virtual environment, and smoke-tests the generic CLI, its legacy `jcode-telegram` alias, and the deprecated hook adapter in an isolated profile. Only after this succeeds does release-please create or update a release PR.
 3. The workflow validates the generated PR's live title, repository, and base, then explicitly dispatches `ci.yml` at its head branch. This independently tests that exact head without a new PAT. Token-created PR opened/synchronize/reopened events can also create an approval-required native PR workflow. A passing dispatched head run is not a substitute for the native PR check required by branch protection.
 4. Review the release PR, version, and changelog. If GitHub shows **Approve and run workflows**, a maintainer must approve that run in Actions after reviewing the generated changes. With the GitHub CLI, use `gh api --method POST repos/OWNER/REPO/actions/runs/RUN_ID/approve`, then watch that run. This workflow approval is separate from approving a PR review. Wait for the stable **CI** check to succeed on the current release PR, then squash merge it. After a bot updates the branch, verify checks and any approval again. Never bypass branch protection or treat a stale/dispatched head check as approval to merge. The workflow never automatically merges PRs.
 5. On the merge push, validated release-please creates the tag and GitHub release. In the same workflow, a separate artifacts job checks out the exact reported release SHA, verifies the tag SHA and `version.txt`, reruns tests/build/install checks, verifies wheel and sdist metadata versions, and uploads both distributions plus `SHA256SUMS`. It does not depend on token-created tag/release events triggering another workflow. Nothing is published to PyPI.
@@ -33,7 +33,7 @@ python -m build
 TITLE='fix: example subject' python scripts/check_conventional.py
 ```
 
-CLI smoke checks use a temporary `JCODE_HOME`, do not send Telegram messages, and install/uninstall only the temporary hook configuration. Dependency installation/build tooling needs package-index access, but the application smoke commands themselves need neither network nor credentials.
+CLI smoke checks use a temporary `TELEGRAM_ALERTS_HOME`, do not send Telegram messages, and confine legacy hook registration/uninstall to that temporary profile. Dependency installation/build tooling needs package-index access, but the application smoke commands themselves need neither network nor credentials.
 
 The workflows can be dispatched manually after they exist on the default branch. Dispatch the release workflow only on `main`; other refs are rejected by the validation job condition. If upload fails after the GitHub release has been created, rerun the failed artifacts job from the original run so its release outputs are retained. Starting a brand-new release workflow may have no new release outputs and therefore will not repair a previous upload. Upload is idempotent with `--clobber`. Compare downloaded assets against `SHA256SUMS`. These are integrity hashes, not signatures or provenance attestations.
 

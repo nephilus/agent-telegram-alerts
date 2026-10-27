@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-During the initial 0.x series, security fixes target the latest released version only. The integration is unofficial and best effort, with no availability or support SLA. It was developed against Jcode v0.98.1, not every Jcode release.
+During the initial 0.x series, security fixes target the latest released version only. The generic Telegram CLI/skill is best effort, with no availability or support SLA. The package also retains an optional, deprecated Jcode event adapter; that adapter is not required by the generic attention flow.
 
 ## Report a vulnerability privately
 
@@ -12,9 +12,9 @@ If private reporting is unavailable, open a public issue requesting a private co
 
 ## Threat model and data flow
 
-The extension intentionally transmits short public user-request and assistant-response excerpts to the Telegram destination already configured in the local Jcode profile. Installing it grants that capability to hooked turns in every project using that profile, including worker/swarm turns. Anyone with access to the destination can read those excerpts. Device notifications may reveal them on a lock screen.
+The generic attention command intentionally transmits the caller's bounded `context`, `needs_you`, optional recommendation, and validated `links` to the selected Telegram destination. It is invoked from any agent or shell and does not depend on a Jcode session or hook. The optional legacy Jcode event adapter can additionally forward bounded public request/result excerpts when explicitly enabled. Anyone with access to the destination can read forwarded content; device notifications may reveal it on a lock screen.
 
-No incoming command server, webhook endpoint, remote shell, or network listener is implemented here. Optional remote commands and approval replies belong to Jcode's native channel. New bot setup disables native replies by default. Hook registration and verbosity changes do not alter an existing native reply choice. Do not enable native remote control without evaluating Jcode's authorization and approval model separately.
+No incoming command server, webhook endpoint, remote shell, reply poller, or network listener is implemented here. New bot setup disables remote replies by default. The generic CLI does not modify Plannotator or start/stop its Inbox service. Telegram delivery is not an approval channel; use the reviewed Plannotator/GitHub route for decisions.
 
 The helper:
 
@@ -22,30 +22,30 @@ The helper:
 - Accepts bot tokens only through hidden interactive terminal input during setup.
 - Requires an exact challenge from a matching private user/chat before saving a new destination.
 - Tests delivery before enabling the native channel, and refuses to replace an existing webhook.
-- Includes request context only after uniquely matching the current successful public response in the same saved session.
-- Omits unbound prompt context on failure and prefers the current error over stale successful output.
+- In legacy Jcode event mode, includes request context only after uniquely matching the current successful public response in the same saved session.
+- Legacy event formatting omits unbound prompt context on failure and prefers the current error over stale successful output.
 - Does not use reasoning, images, or tool-result blocks as request context.
 - Uses explicit UTF-16 bold and validated `text_link` entities rather than interpreting task text as HTML or Markdown.
 - Disables Telegram link previews and does not fetch or resolve output-link destinations.
-- Writes configuration/backups, preferences, hook ownership, policy state and receipts with mode 0600.
-- Does not reuse earlier request/response text for session-start, working or closure events.
-- Scopes editable status-card IDs to a hashed session and destination, so relinking does not edit an old destination.
+- Writes configuration/backups, preferences, policy state and receipts under the selected `TELEGRAM_ALERTS_HOME` with mode 0600. The default is `~/.config/telegram-alerts`.
+- Legacy lifecycle events do not reuse earlier request/response text for session-start, working or closure events.
+- Legacy editable status-card IDs are scoped to a hashed session and destination, so relinking does not edit an old destination.
 
 These controls do not defend against a compromised local user account, malicious replacements of installed code, a compromised Telegram account/bot, or hostile native Jcode components. Protect the installation directory and the parent directories of Jcode state. File-level symlink checks are not a substitute for an owner-controlled filesystem.
 
 ## Redaction is not data-loss prevention
 
-Redaction removes common known credential forms, the configured bot token, labeled secret values, code fences, paths inside request/result text, ordinary body URLs, and email addresses. The explicit `📁` metadata line intentionally displays the native session working-folder path, with home abbreviation and bounded left-side shortening. Folder names can themselves be sensitive, and home abbreviation is not anonymization. Known credentials and credential-shaped values are still scanned before folder shortening. Explicit renamed titles or saved labels may be included as a separate bounded Session line, with ordinary credential and path redaction before clipping. They are not verified project identifiers and may contain sensitive prose. Generated summaries, automatic animal names and raw session IDs are not used as name fallbacks or substitutes for missing folder metadata. It is **best effort** and may miss arbitrary private prose, unfamiliar credential formats, encoded secrets, or misleadingly structured text. Do not use it as the sole control protecting confidential projects. Review no-send previews and unregister the hook for work that must not leave the machine.
+Redaction removes common known credential forms, the configured bot token, labeled secret values, code fences, paths inside request/result text, ordinary body URLs, and email addresses. Generic attention displays the invoking command's current working directory, never a session name or ID. Legacy event alerts may display bounded native working-folder/session metadata; folder names can be sensitive, and home abbreviation is not anonymization. This is **best effort** and may miss arbitrary private prose, unfamiliar credential formats, encoded secrets, or misleadingly structured text. Do not use it as the sole control protecting confidential projects. Preview before forwarding sensitive work.
 
-The optional Links section is a deliberate URL-redaction exception. It forwards up to three validated HTTPS targets from current assistant output or the current error, with destination-derived labels and disabled previews. Targets with query strings, fragments, percent escapes, embedded credentials, IP/local hosts, nonstandard ports or recognized credential forms are rejected. Code fences and lines containing redacted secrets are excluded. The helper performs no DNS, redirect, repository-visibility or content checks. URL paths can still contain sensitive names, unfamiliar secrets or private resource identifiers. Do not assume a syntactically accepted target is safe or public.
+Attention forwards up to three validated `links[].url` targets with derived labels and disabled previews; URLs in text fields are rejected. Ordinary links reject query/fragment data, credentials, IP/local hosts, nonstandard ports, and recognized credential forms. The sole Inbox exception rewrites an exact registered localhost port to the read-only Plannotator `tailscale.url`, preserving path/query/fragment in the outbound link. Missing mapping omits the local link with a warning rather than inventing a destination. The registry is not modified, and the receipt reports only mapping origins. The helper performs no DNS, redirect, repository-visibility or content checks. URL paths can still contain sensitive names or private identifiers; do not assume a syntactically accepted target is safe or public.
 
 Checks in the notification are excerpts from the assistant response. They are not independently verified. A successful model turn is not proof that the entire user's goal succeeded.
 
 ## Local state and removal
 
-`JCODE_HOME` defaults to `~/.jcode`. It contains credentials, session data, configuration backups, preferences, hook ownership metadata, and latest-receipt diagnostics. None belongs in this repository, release artifacts, CI secrets, public screenshots, or issue attachments. Backups can contain live credentials.
+`TELEGRAM_ALERTS_HOME` selects the writable profile and defaults to `~/.config/telegram-alerts`; deprecated `JCODE_HOME` is honored only if the generic variable is unset. When the default generic home has no Telegram credentials/config, the CLI reads only Telegram safety fields from `~/.jcode/config.toml` in read-only compatibility mode and prints a notice. Legacy policy and attention-dedup files are also read-only fallbacks; all new writes stay in the selected generic home. No credentials or Jcode session data are copied. Do not upload configuration/backups or private receipts. Backups can contain live credentials.
 
-`jcode-telegram-hook uninstall` removes only the manifest-owned hooks and preserves native settings. Explicit legacy migration refuses ambiguous commands instead of silently taking ownership. Moshi deduplication removes only exact recognized duplicate registrations and preserves unrelated commands. `jcode-telegram disable` also disables the native Telegram flags, so those commands are not interchangeable.
+The Jcode hook installer is deprecated and requires an explicit home. When deliberately used, `telegram-alerts-hook uninstall` removes only manifest-owned hooks and preserves unrelated settings. It is not needed for generic attention. `telegram-alerts disable` disables only the selected Alerts profile; it does not change Jcode's native Telegram flags unless the operator explicitly selects a native home.
 
 Policy/card state stores only one-way fingerprints, timestamps, counters and Telegram message IDs. Explicit session filters remain in the private policy file. Existing state is validated before it can select a card to edit. Protect the notifications directory against other local users. Neither cooldowns nor message editing provide guaranteed exactly-once delivery if Telegram accepts a request but the connection fails before acknowledgment, or the process crashes before local state is durable.
 

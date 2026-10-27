@@ -4,7 +4,7 @@ This optional workflow keeps Jcode core and compaction unchanged. The reviewed s
 
 ## Adopt once, not in every repo
 
-Review the overlay and procedure before installing them. Their packaged copies are included under the virtual environment's `share/jcode-telegram-alerts/` directory:
+Review the overlay and procedure before installing them. Their packaged copies are included under the virtual environment's `share/telegram-alerts/` directory:
 
 - `prompts/owner-workflow.md` goes to `~/.jcode/prompt-overlay.md`.
 - `skills/owner-review/SKILL.md` goes to `~/.jcode/skills/owner-review/SKILL.md`.
@@ -23,16 +23,16 @@ Normal installed Jcode `v0.98.1` reread an edited overlay in a resumed-session a
 Review-link support is disabled by default. Explicitly configure the exact Tailscale device hostname you intend to publish, verified against that host's own Tailscale status, not copied from an untrusted message:
 
 ```sh
-jcode-telegram review-host device.tailnet.ts.net
-jcode-telegram review-host
+telegram-alerts review-host device.tailnet.ts.net
+telegram-alerts review-host
 ```
 
-The hostname above is illustrative. The setting stores one exact ASCII `device.tailnet.ts.net` name, not a wildcard or an entire tailnet. It is private extension state at `~/.jcode/notifications/telegram-review-policy.json`, not a change to native Telegram credentials, Tailscale ACLs or Serve configuration. Disable with `jcode-telegram review-host off`.
+The hostname above is illustrative. The setting stores one exact ASCII `device.tailnet.ts.net` name, not a wildcard or an entire tailnet. It is private extension state at `~/.config/telegram-alerts/notifications/telegram-review-policy.json`, not a change to native Telegram credentials, Tailscale ACLs or Serve configuration. Disable with `telegram-alerts review-host off`.
 
 For a live native Plannotator review, pass its actual port explicitly:
 
 ```sh
-jcode-telegram attention --key example/project:decision:reviewed-revision --review-port 19433 < attention.json
+telegram-alerts attention --key example/project:decision:reviewed-revision --review-port 19433 < attention.json
 ```
 
 This port is illustrative too. Read the real HTTPS origin from the owned Plannotator process, verify that the intended document/revision is served, and put that exact URL in `links`. A declared review must include a matching link. The exception allows only that configured host, that declared port from 1024 through 65535, and the HTTPS root origin. It does not authorize paths, signed/query/fragment URLs, IPs, other hosts or automatic trust changes. Routine alert links keep the existing strict policy.

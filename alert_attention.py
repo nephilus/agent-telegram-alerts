@@ -2,11 +2,13 @@
 import os
 import json
 import re
+import stat
 import time
-from urllib.parse import urlsplit
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import alert_format as formatting
-from alert_links import safe_url, _known, _TOKEN, _MAX_URL
+from alert_links import safe_url, _known, _TOKEN, _MAX_URL, _SECRET_PATH
 import alert_policy as policy
 
 MAX_INPUT_BYTES = 8192
@@ -14,6 +16,14 @@ MAX_REQUESTS = 256
 RETENTION_SECONDS = 30 * 86400
 STATE_FILE = "telegram-attention-state.json"
 MAX_STATE_BYTES = 65536
+MAX_INBOX_REGISTRY_BYTES = 65536
+INBOX_REGISTRY_ENV = "TELEGRAM_ALERTS_INBOX_REGISTRY"
+INBOX_BASE_ENV = "TELEGRAM_ALERTS_INBOX_BASE_URL"
+_INBOX_PATH = re.compile(r"/(?:[A-Za-z0-9._~!$&()*+,;=:@/-]|%[0-9A-Fa-f]{2})*\Z")
+_INBOX_QUERY = re.compile(r"[A-Za-z0-9._~!$&()*+,;=:@/?%-]*\Z")
+_INBOX_FORBIDDEN = tuple(chr(code) for code in (92, 34, 39, 60, 62, 91, 93))
+_INBOX_BASE_FORBIDDEN = _INBOX_FORBIDDEN + tuple(chr(code) for code in (37, 63, 35))
+_INBOX_DECODED_PATH_FORBIDDEN = _INBOX_FORBIDDEN + ("?", "#")
 
 
 class AttentionError(ValueError):
@@ -86,6 +96,172 @@ def _review_url(value, host, port, secrets):
     return canonical
 
 
+def _read_inbox_registry(path):
+    """Read only the registry's port and tailnet URL; never expose other fields."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except (OSError, TypeError, ValueError):
+        return None, None
+    try:
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or info.st_nlink != 1 or info.st_mode & 0o077
+                    or info.st_size > MAX_INBOX_REGISTRY_BYTES):
+                return None, None
+            raw = stream.read(MAX_INBOX_REGISTRY_BYTES + 1)
+    except OSError:
+        return None, None
+    if len(raw) > MAX_INBOX_REGISTRY_BYTES:
+        return None, None
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=policy._pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+    except (ValueError, UnicodeError, RecursionError):
+        return None, None
+    if not isinstance(value, dict):
+        return None, None
+    port = value.get("port")
+    if type(port) is not int or not 1 <= port <= 65535:
+        return None, None
+    tailscale = value.get("tailscale")
+    return port, tailscale.get("url") if isinstance(tailscale, dict) else None
+
+
+def _trusted_inbox_base(value, port):
+    if (not isinstance(value, str) or not value or len(value) > _MAX_URL
+            or any(ord(c) < 33 or ord(c) > 126 for c in value)
+            or any(c in value for c in _INBOX_BASE_FORBIDDEN)):
+        return None
+    try:
+        parts = urlsplit(value)
+        actual_port = parts.port
+    except ValueError:
+        return None
+    host = parts.hostname
+    if (parts.scheme != "https" or parts.username is not None or parts.password is not None
+            or host is None or host != host.lower()
+            or safe_url("https://" + host) != "https://" + host
+            or parts.path not in ("", "/")
+            or parts.query or parts.fragment):
+        return None
+    if actual_port != port and not (port == 443 and actual_port is None):
+        return None
+    authority = host if actual_port is None else f"{host}:{actual_port}"
+    if parts.netloc != authority:
+        return None
+    return "https://" + authority
+
+
+def _has_loopback_link(request):
+    if not isinstance(request, dict) or not isinstance(request.get("links", []), list):
+        return False
+    return any(isinstance(link, dict) and isinstance(link.get("url"), str)
+               and link["url"].startswith(("http://localhost:", "http://127.0.0.1:"))
+               for link in request.get("links", []))
+
+
+def _inbox_mapping(environment, request):
+    if not _has_loopback_link(request):
+        return {"port": None, "base": None}
+    registry = environment.get(INBOX_REGISTRY_ENV) if isinstance(environment, dict) else None
+    if not isinstance(registry, str) or not registry:
+        registry = str(Path.home() / ".plannotator" / "inbox" / "inbox.json")
+    port, registered_url = _read_inbox_registry(os.path.expanduser(registry))
+    override = environment.get(INBOX_BASE_ENV) if isinstance(environment, dict) else None
+    source = override if isinstance(override, str) and override else registered_url
+    base = _trusted_inbox_base(source, port) if port is not None else None
+    return {"port": port, "base": base}
+
+
+def _loopback_prefix(value, port):
+    if not isinstance(value, str):
+        return None
+    if port is None:
+        match = re.match(r"http://(?:localhost|127\.0\.0\.1):[0-9]+(?=[/?#]|$)", value)
+        return match.group(0) if match else None
+    for host in ("localhost", "127.0.0.1"):
+        prefix = f"http://{host}:{port}"
+        if value.startswith(prefix) and (len(value) == len(prefix) or value[len(prefix)] in "/?#"):
+            return prefix
+    return None
+
+
+def _valid_inbox_target(value, mapping, secrets):
+    if (not isinstance(value, str) or not value or len(value) > _MAX_URL
+            or any(ord(c) < 33 or ord(c) > 126 for c in value)
+            or any(c in value for c in _INBOX_FORBIDDEN)
+            or re.search(r"%(?![0-9A-Fa-f]{2})", value)
+            or _known(value, secrets) or _TOKEN.search(value)):
+        return False
+    try:
+        parts = urlsplit(value)
+        base_parts = urlsplit(mapping["base"])
+    except ValueError:
+        return False
+    decoded_path = unquote(parts.path)
+    if (parts.scheme != "https" or parts.netloc != base_parts.netloc
+            or parts.username is not None or parts.password is not None
+            or parts.hostname != base_parts.hostname or parts.port != base_parts.port
+            or not _INBOX_PATH.fullmatch(parts.path)
+            or chr(0xFFFD) in decoded_path
+            or any(ord(c) < 32 or ord(c) == 127 or c in _INBOX_DECODED_PATH_FORBIDDEN for c in decoded_path)
+            or _SECRET_PATH.search(decoded_path) or _TOKEN.search(decoded_path)
+            or _known(decoded_path, secrets)):
+        return False
+    depth = 0
+    for char in decoded_path:
+        depth += (char == "(") - (char == ")")
+        if depth < 0:
+            return False
+    if depth:
+        return False
+    for part in (parts.query, parts.fragment):
+        decoded = unquote(part)
+        if (not _INBOX_QUERY.fullmatch(part) or chr(0xFFFD) in decoded
+                or _TOKEN.search(decoded) or _known(decoded, secrets)
+                or _SECRET_PATH.search(decoded.replace("&", "/"))):
+            return False
+    return True
+
+
+def _rewrite_inbox_url(value, mapping, secrets=()):
+    prefix = _loopback_prefix(value, mapping.get("port"))
+    if prefix is None:
+        return None, None, False
+    if not mapping.get("base"):
+        return None, prefix, True
+    suffix = value[len(prefix):]
+    target = mapping["base"] + (suffix if suffix.startswith("/") else "/" + suffix)
+    if not _valid_inbox_target(target, mapping, secrets):
+        return None, prefix, False
+    return target, prefix, False
+
+
+def _record_inbox_rewrite(report, prefix, base):
+    if report is None:
+        return
+    target = base + "/"
+    for entry in report.setdefault("url_rewrites", []):
+        if entry["from"] == prefix and entry["to"] == target:
+            entry["count"] += 1
+            return
+    report["url_rewrites"].append({"from": prefix, "to": target, "count": 1})
+
+
+def _record_inbox_warning(report, mapping):
+    if report is None:
+        return
+    port = mapping.get("port")
+    if port is None:
+        warning = "Local Inbox link omitted because the read-only Plannotator registry did not provide a valid port and tailnet URL."
+    else:
+        warning = f"Local Inbox link for registered port {port} omitted because no trusted tailnet URL is available."
+    warnings = report.setdefault("url_rewrite_warnings", [])
+    if warning not in warnings:
+        warnings.append(warning)
+
+
 def read_request(stream):
     if stream.isatty():
         raise AttentionError("Attention expects a JSON object on standard input; see --help.")
@@ -115,7 +291,8 @@ def _text(value, title, limit, secrets, *, optional=False):
     return cleaned
 
 
-def render(request, environment, home, secrets=(), *, review_port=None):
+def render(request, environment, home, secrets=(), *, review_port=None,
+           inbox_mapping=None, rewrite_report=None):
     secrets = tuple(secrets)
     host = None
     if review_port is not None:
@@ -141,11 +318,21 @@ def render(request, environment, home, secrets=(), *, review_port=None):
         label = _text(link["label"], "link label", 80, secrets)
         if len(label.splitlines()) != 1 or "[redacted]" in label:
             raise AttentionError("Attention link labels must be single-line, non-sensitive text.")
+        mapped = None
+        source_prefix = None
+        unmapped = False
+        if inbox_mapping is not None:
+            mapped, source_prefix, unmapped = _rewrite_inbox_url(link["url"], inbox_mapping, secrets)
+        if unmapped:
+            _record_inbox_warning(rewrite_report, inbox_mapping)
+            continue
         review = _review_url(link['url'], host, review_port, secrets) if host else None
         matched_review = matched_review or review is not None
-        target = review or safe_url(link["url"], secrets)
+        target = review or mapped or safe_url(link["url"], secrets)
         if target is None:
             raise AttentionError("Attention link rejected: use a verified public-DNS HTTPS URL without credentials, query, fragment, escapes or a non-443 port. No message sent.")
+        if mapped is not None:
+            _record_inbox_rewrite(rewrite_report, source_prefix, inbox_mapping["base"])
         # Show the destination host even when the agent supplies a friendly label.
         links.append({"label": label + " · " + urlsplit(target).netloc, "url": target})
     if review_port is not None and not matched_review:
@@ -159,9 +346,9 @@ def render(request, environment, home, secrets=(), *, review_port=None):
                              "length": formatting.utf16_length(value)})
         text += value
 
-    append("Jcode needs you", bold=True)
+    append("Agent needs you", bold=True)
     # Explicit attention is agent-agnostic; never fetch or display a Jcode session name.
-    append("\n📁 " + formatting.folder_label({"JCODE_HOOK_CWD": environment.get("JCODE_HOOK_CWD")}, secrets=secrets))
+    append("\n📁 " + formatting.folder_label({"TELEGRAM_ALERTS_CWD": environment.get("TELEGRAM_ALERTS_CWD")}, secrets=secrets))
     for icon, title, value in (("👉", "Needs you", needed), ("🧭", "Context", context),
                                 ("✅", "Recommended", recommendation)):
         if value:
@@ -191,6 +378,29 @@ def _state(value):
     return value
 
 
+def _load_policy(home, legacy_home):
+    primary = os.path.join(home, "notifications", policy.POLICY_FILE)
+    legacy = (os.path.join(legacy_home, "notifications", policy.POLICY_FILE)
+              if legacy_home is not None else None)
+    if legacy is not None and not os.path.lexists(primary) and os.path.lexists(legacy):
+        return policy.load_policy(legacy_home)
+    return policy.load_policy(home)
+
+
+def _legacy_requests(home, legacy_home):
+    if legacy_home is None or os.path.abspath(home) == os.path.abspath(legacy_home):
+        return {}
+    path = os.path.join(legacy_home, "notifications", STATE_FILE)
+    if not os.path.lexists(path):
+        return {}
+    with policy._directory(legacy_home) as folder:
+        if folder is None:
+            raise ValueError("Unsafe legacy attention state directory")
+        value = _state(policy._read(folder, STATE_FILE, MAX_STATE_BYTES,
+                                   {"version": 1, "requests": {}}, True))
+    return value["requests"]
+
+
 def _publish_options(key, destination_fingerprint, resend):
     if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,199}", key):
         raise AttentionError("Attention --key must be a stable decision/revision identifier of 1-200 ASCII characters.")
@@ -199,15 +409,18 @@ def _publish_options(key, destination_fingerprint, resend):
         raise AttentionError("Invalid attention destination or resend option.")
 
 
-def publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False, review_port=None):
+def publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False,
+            review_port=None, legacy_home=None):
     _publish_options(key, destination_fingerprint, resend)
-    options = {'secrets': secrets, 'resend': resend, 'review_port': review_port}
+    options = {'secrets': secrets, 'resend': resend, 'review_port': review_port,
+               'legacy_home': legacy_home}
     if review_port is None:
         return _publish(home, environment, request, key, deliver, destination_fingerprint, **options)
     # Reject malformed input or absent/unsafe trust before any lock-file
     # creation, then validate again under the trust lock before sending.
     options['secrets'] = tuple(secrets)
-    render(request, environment, home, options['secrets'], review_port=review_port)
+    render(request, environment, home, options['secrets'], review_port=review_port,
+           inbox_mapping=_inbox_mapping(environment, request))
     try:
         with policy._directory(home) as folder:
             if folder is None:
@@ -223,11 +436,14 @@ def publish(home, environment, request, key, deliver, destination_fingerprint, *
         raise AttentionError(REVIEW_ERROR) from None
 
 
-def _publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False, review_port=None):
+def _publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False,
+             review_port=None, legacy_home=None):
     session = environment.get("JCODE_SESSION_ID")
-    message = render(request, environment, home, secrets, review_port=review_port)
+    mapping = _inbox_mapping(environment, request)
+    message = render(request, environment, home, secrets, review_port=review_port,
+                     inbox_mapping=mapping)
     try:
-        config = policy.load_policy(home)
+        config = _load_policy(home, legacy_home)
         if session in config["exclude_sessions"] or (config["include_sessions"] and session not in config["include_sessions"]):
             raise AttentionError("Attention disabled by the configured session filters. No message sent.")
         fingerprint = policy._hash(destination_fingerprint + "\0" + key)
@@ -235,10 +451,19 @@ def _publish(home, environment, request, key, deliver, destination_fingerprint, 
         with policy._directory(home, create=True) as folder, policy._locked(folder, ".telegram-attention.lock"):
             state = _state(policy._read(folder, STATE_FILE, MAX_STATE_BYTES, {"version": 1, "requests": {}}, True))
             state["requests"] = {k: v for k, v in state["requests"].items() if now - v["at"] <= RETENTION_SECONDS}
-            if fingerprint in state["requests"] and not resend:
-                return {"state": "already_sent", "telegram_message_id": state["requests"][fingerprint]["message_id"]}
-            if fingerprint not in state["requests"] and len(state["requests"]) >= MAX_REQUESTS:
+            legacy_requests = _legacy_requests(home, legacy_home)
+            legacy_requests = {k: v for k, v in legacy_requests.items() if now - v["at"] <= RETENTION_SECONDS}
+            existing = state["requests"].get(fingerprint) or legacy_requests.get(fingerprint)
+            if existing and not resend:
+                return {"state": "already_sent", "telegram_message_id": existing["message_id"]}
+            active = {**legacy_requests, **state["requests"]}
+            if fingerprint not in active and len(active) >= MAX_REQUESTS:
                 raise AttentionError("Attention state is at capacity. No message sent.")
+            # Re-read the read-only registry immediately before rendering the
+            # message sent under this lock. Only the outgoing copy is rewritten.
+            report = {"url_rewrites": [], "url_rewrite_warnings": []}
+            message = render(request, environment, home, secrets, review_port=review_port,
+                             inbox_mapping=_inbox_mapping(environment, request), rewrite_report=report)
             response = deliver("sendMessage", message)
             if (not isinstance(response, dict) or not policy._message_id(response.get("message_id"))
                     or not formatting.formatting_confirmed(message, response)):
@@ -248,8 +473,13 @@ def _publish(home, environment, request, key, deliver, destination_fingerprint, 
                 policy._write(folder, STATE_FILE, state, MAX_STATE_BYTES)
             except (OSError, ValueError):
                 raise AttentionError("Telegram accepted the attention message, but local confirmation could not be saved. Do not retry automatically.") from None
-            return {"state": "sent", "telegram_message_id": response["message_id"],
-                    "response_confirmed": True, "formatting_confirmed": True}
+            receipt = {"state": "sent", "telegram_message_id": response["message_id"],
+                       "response_confirmed": True, "formatting_confirmed": True}
+            if report["url_rewrites"]:
+                receipt["url_rewrites"] = report["url_rewrites"]
+            if report["url_rewrite_warnings"]:
+                receipt["url_rewrite_warnings"] = report["url_rewrite_warnings"]
+            return receipt
     except AttentionError:
         raise
     except KeyboardInterrupt:

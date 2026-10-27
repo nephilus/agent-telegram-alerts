@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 import alert_format as fmt
-import jcode_telegram as app
+import telegram_alerts as app
 from test_readability import bold_fragments
 
 
@@ -126,7 +126,7 @@ class NamedSessionTests(unittest.TestCase):
                     self.assertLessEqual(len(message["text"]), limits["chars"])
 
     def test_hook_and_saved_preview_read_explicit_metadata_and_hot_reload_renames(self):
-        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"JCODE_HOME": home}), patch.object(app, "api") as network:
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": home}), patch.object(app, "api") as network:
             saved(home, custom_title="Storage migration", short_name="automatic-animal", title="Automatic summary")
             for render in (lambda: app.alert_message(event()), lambda: app.preview_message("expanded", SESSION)):
                 self.assertIn("🏷 Session: Storage migration", render()["text"])
@@ -142,7 +142,7 @@ class NamedSessionTests(unittest.TestCase):
             self.assertFalse(app.receipt_path().exists())
 
     def test_error_can_identify_same_session_without_exporting_old_prompt_or_response(self):
-        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"JCODE_HOME": home}):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": home}):
             saved(home, custom_title="Named recovery task")
             message = app.alert_message(event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current failure"))
             self.assertIn("🏷 Session: Named recovery task", message["text"])

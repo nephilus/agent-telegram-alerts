@@ -15,6 +15,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         cls.skill = (ROOT / "skills/owner-review/SKILL.md").read_text()
         cls.workflow = (ROOT / "docs/owner-workflow.md").read_text()
         cls.inbox = (ROOT / "skills/owner-review/references/inbox.md").read_text()
+        cls.telegram_skill = (ROOT / "skills/telegram/SKILL.md").read_text()
 
     def require(self, text, phrases):
         for phrase in phrases:
@@ -31,6 +32,10 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         self.assertTrue(description.startswith("ADR writing, doc reviews and owner-dependent choices:"))
         self.assertIn("Inbox questions", description)
         self.assertLessEqual(len(self.inbox.split()), 600)
+        self.assertLessEqual(len(self.telegram_skill.split()), 600)
+        match = re.match(r'---\nname: telegram\ndescription: "([^"\n]+)"\n---\n', self.telegram_skill)
+        self.assertIsNotNone(match)
+        self.assertLessEqual(len(match.group(1)), 120)
 
     def test_adr_y_statement_and_material_scope(self):
         self.assertIn("Frame ADR decisions as Y-statements", self.overlay)
@@ -97,7 +102,7 @@ class OwnerWorkflowTemplates(unittest.TestCase):
     def test_handoff_trust_and_result_contract(self):
         self.require(self.skill, [
             "originating Jcode session", "repository, document path, commit, SHA-256",
-            "background job identifier, result path", "jcode-telegram review-host",
+            "background job identifier, result path", "telegram-alerts review-host",
             "never silently trust/configure", "1024..65535", "GET only", "`/api/plan`",
             "expected document and exact snapshot", "Do not self-submit", "do not use Funnel",
             "--review-port PORT", "`context`, `needs_you`, optional `recommendation`",
@@ -107,6 +112,17 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             "without automatic re-review loops", "removed only the owned endpoint",
             "preserved all other mappings", ":::question", "Recommended:", "Reason:",
             "**Send answers**", "**Send feedback**", "**Approve** alone does not submit",
+        ])
+
+    def test_telegram_skill_describes_generic_attention_and_inbox_rewrites(self):
+        self.require(self.telegram_skill, [
+            "telegram-alerts attention", "does not require a Jcode session", "matching optional `JCODE_SESSION_ID`",
+            "TELEGRAM_ALERTS_HOME", "registered `port` and `tailscale.url`",
+            "http://localhost:<registered-port>", "http://127.0.0.1:<registered-port>",
+            "path, query, and fragment", "TELEGRAM_ALERTS_INBOX_REGISTRY",
+            "TELEGRAM_ALERTS_INBOX_BASE_URL", "omitted with a warning",
+            "Do not automatically retry", "Use `--resend` only after an explicit owner request",
+            "Put URLs only in `links`",
         ])
 
     def test_templates_have_no_private_paths_or_real_hosts(self):
@@ -167,10 +183,13 @@ class OwnerWorkflowTemplates(unittest.TestCase):
     def test_installed_skill_reference_is_declared_as_a_package_asset(self):
         config = tomllib.loads((ROOT / "pyproject.toml").read_text())
         assets = config["tool"]["setuptools"]["data-files"]
-        destination = "share/jcode-telegram-alerts/skills/owner-review/references"
+        destination = "share/telegram-alerts/skills/owner-review/references"
         reference = "skills/owner-review/references/inbox.md"
+        telegram_skill = "skills/telegram/SKILL.md"
         self.assertEqual(assets[destination], [reference])
+        self.assertEqual(assets["share/telegram-alerts/skills/telegram"], [telegram_skill])
         self.assertTrue((ROOT / reference).is_file())
+        self.assertTrue((ROOT / telegram_skill).is_file())
         self.assertIn("~/.jcode/skills/owner-review/references/inbox.md", self.workflow)
 
 

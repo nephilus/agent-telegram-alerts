@@ -17,7 +17,7 @@ from unittest.mock import patch
 import alert_format as fmt
 import alert_policy as policy
 import alert_selector as selector
-import jcode_telegram as app
+import telegram_alerts as app
 
 
 class SelectorIntegrationTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class SelectorIntegrationTests(unittest.TestCase):
         self.home = Path(self.tmp.name)
         self.sid = "session_selector_test"
         self.environment = {
-            "JCODE_HOME": str(self.home), "JCODE_SESSION_ID": self.sid,
+            "TELEGRAM_ALERTS_HOME": str(self.home), "JCODE_SESSION_ID": self.sid,
             "JCODE_HOOK_SESSION_ID": self.sid, "JCODE_HOOK_EVENT": "turn_end",
             "JCODE_HOOK_STATUS": "ok", "JCODE_HOOK_DURATION_MS": "500",
             "JCODE_HOOK_CWD": "/sample/project",
@@ -234,7 +234,7 @@ class SelectorIntegrationTests(unittest.TestCase):
         def telegram(token, method, body):
             self.calls.append((method, body))
             return {**body, "message_id": 42}
-        with patch.dict(os.environ, self.environment), patch.object(app.sys, "argv", ["jcode-telegram", "attention", "--key", "test:choice:revision1"]), patch.object(app.sys, "stdin", io.StringIO(json.dumps(request))), patch.object(app.sys, "stdout", io.StringIO()), patch.object(app, "api", side_effect=telegram), patch.object(selector, "process", side_effect=AssertionError("Attention must bypass Clef")):
+        with patch.dict(os.environ, self.environment), patch.object(app.sys, "argv", ["telegram-alerts", "attention", "--key", "test:choice:revision1"]), patch.object(app.sys, "stdin", io.StringIO(json.dumps(request))), patch.object(app.sys, "stdout", io.StringIO()), patch.object(app, "api", side_effect=telegram), patch.object(selector, "process", side_effect=AssertionError("Attention must bypass Clef")):
             app.main()
         self.assertEqual(len(self.calls), 1)
         self.assertIn("Choose option A or B", self.calls[0][1]["text"])
@@ -245,7 +245,7 @@ class SelectorIntegrationTests(unittest.TestCase):
         self.enable()
         config_before = (self.home / "config.toml").read_bytes()
         command = [sys.executable, "-B", str(Path(app.__file__))]
-        environment = {**os.environ, "JCODE_HOME": str(self.home)}
+        environment = {**os.environ, "TELEGRAM_ALERTS_HOME": str(self.home)}
         queried = subprocess.run(command + ["selector"], env=environment, capture_output=True, text=True, check=True)
         result = json.loads(queried.stdout)
         self.assertEqual(result["mode"], "clef")

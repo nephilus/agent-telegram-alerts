@@ -50,13 +50,13 @@ env -u PLANNOTATOR_PORT -u PLANNOTATOR_AGENT_TERMINAL_REMOTE PLANNOTATOR_BROWSER
 
 Never prefix `--browser` before `annotate`: that parser combination is broken. Add `--require-approval` only for the explicitly scoped approval-required action, not ordinary document feedback or question answers. Keep host and process alive, use native background wait/wake, and continue independent authorized work.
 
-Capture the actual HTTPS URL printed by this job. Query `jcode-telegram review-host` for the configured exact host. If unset/off or mismatched, stop this handoff and report the trust prerequisite; never silently trust/configure each observed URL host. Check the root-origin HTTPS URL has that exact `device.tailnet.ts.net` host and the declared port in 1024..65535. Preserve the actual URL verbatim, including any query rather than guessing or stripping it. If incompatible with attention validation, report failure rather than rewrite it.
+Capture the actual HTTPS URL printed by this job. Query `telegram-alerts review-host` for the configured exact host. If unset/off or mismatched, stop this handoff and report the trust prerequisite; never silently trust/configure each observed URL host. Check the root-origin HTTPS URL has that exact `device.tailnet.ts.net` host and the declared port in 1024..65535. Preserve the actual URL verbatim, including any query rather than guessing or stripping it. If incompatible with attention validation, report failure rather than rewrite it.
 
 Before handoff, use GET only to verify real HTTPS `/api/plan` serves the expected document and exact snapshot. Do not self-submit feedback. Native Tailscale Serve trusts permitted tailnet peers; do not use Funnel, remote terminals, or reset other mappings. Record preexisting mappings for cleanup comparison.
 
 ## Notify and resolve
 
-Send `jcode-telegram attention` using the reviewed revision's stable `--key` and per-send `--review-port PORT`. Its JSON contains only `context`, `needs_you`, optional `recommendation`, and `links` entries with `label` and `url`. Include the actual review link and, for material ADRs, the durable GitHub fallback. Check the receipt/failure, not just command launch. Follow the overlay's retry and coordinator guardrails.
+Send `telegram-alerts attention` using the reviewed revision's stable `--key` and per-send `--review-port PORT`. Its JSON contains only `context`, `needs_you`, optional `recommendation`, and `links` entries with `label` and `url`. Include the actual review link and, for material ADRs, the durable GitHub fallback. Check the receipt/failure, not just command launch. Follow the overlay's retry and coordinator guardrails.
 
 For question answers or annotations, tell the owner to use **Send answers** or **Send feedback** as applicable; **Approve** alone does not submit those responses.
 

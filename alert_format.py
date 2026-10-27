@@ -378,12 +378,14 @@ def duration_label(milliseconds):
 
 
 def folder_label(environment, verbosity="expanded", secrets=()):
-    """Display only native CWD metadata, never infer a project or read the disk.
+    """Display only explicit CWD metadata, never infer a project or read the disk.
 
     Preserve ancestry where it fits and the leaf when shortened. Only this
     explicit metadata field is exempt from generic path redaction.
     """
-    raw = environment.get("JCODE_HOOK_CWD")
+    raw = environment.get("TELEGRAM_ALERTS_CWD")
+    if raw is None:
+        raw = environment.get("JCODE_HOOK_CWD")
     if not isinstance(raw, str) or not raw.strip():
         return "Folder unavailable"
     text = " ".join(sanitize(raw, secrets, redact_paths=False).split())

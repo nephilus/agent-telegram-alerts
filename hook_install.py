@@ -1,4 +1,4 @@
-"""Private, conservative registration of jcode-telegram lifecycle hooks."""
+"""Deprecated legacy Jcode hook adapter; generic owner attention does not require hooks."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +15,8 @@ import sys
 import tempfile
 import tomllib
 from contextlib import contextmanager
+
+import alert_home
 
 
 class HookError(Exception):
@@ -159,10 +161,10 @@ def _edit(raw, document, value, event="turn_end"):
 
 def _command(explicit, seconds, verb="alert"):
     if explicit is None:
-        sibling = Path(sys.argv[0]).absolute().parent / "jcode-telegram"
-        explicit = str(sibling) if sibling.is_file() and os.access(sibling, os.X_OK) else shutil.which("jcode-telegram")
+        sibling = Path(sys.argv[0]).absolute().parent / "telegram-alerts"
+        explicit = str(sibling) if sibling.is_file() and os.access(sibling, os.X_OK) else shutil.which("telegram-alerts")
     if not explicit:
-        raise HookError("Cannot find an executable jcode-telegram.")
+        raise HookError("Cannot find an executable telegram-alerts.")
     path = Path(explicit).absolute()
     if not path.is_file() or not os.access(path, os.X_OK):
         raise HookError("Command must be an existing executable file.")
@@ -180,13 +182,14 @@ def _is_alert_hook(command):
         words = list(lexer)
     except ValueError:
         # Ambiguous malformed legacy commands must not silently get a duplicate.
-        return bool(re.search(r"jcode[-_]telegram(?:\.py)?", command) and
+        return bool(re.search(r"(?:jcode[-_]telegram|telegram[-_]alerts)(?:\.py)?", command) and
                     re.search(r"\b(?:alert|event)\b", command))
     direct = any(Path(executable).name in
-                 {"jcode-telegram", "jcode-telegram.py", "jcode_telegram.py"}
+                 {"telegram-alerts", "telegram-alerts.py", "telegram_alerts.py",
+                  "jcode-telegram", "jcode-telegram.py", "jcode_telegram.py"}
                  and argument in {"alert", "event"}
                  for executable, argument in zip(words, words[1:]))
-    return direct or any(word != command and re.search(r"jcode[-_]telegram", word)
+    return direct or any(word != command and re.search(r"(?:jcode[-_]telegram|telegram[-_]alerts)", word)
                          and _is_alert_hook(word) for word in words)
 
 
@@ -249,7 +252,7 @@ def manage(action, command=None, min_seconds=30, events=None, from_command=None,
         raise HookError("Unsupported event selection.")
     if action not in ("install", "uninstall", "status") or from_command is not None and action != "install":
         raise HookError("Unknown operation or migration option.")
-    home = Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode")))
+    home = alert_home.home_path()
     config = home / "config.toml"
     manifest = home / "notifications" / "telegram-hook.json"
     with _lock(home):
@@ -358,7 +361,7 @@ def _is_moshi(command):
 
 def dedupe_moshi():
     """Remove only repeated exact direct Moshi strings, never claim ownership."""
-    home = Path(os.environ.get("JCODE_HOME", str(Path.home() / ".jcode")))
+    home = alert_home.home_path()
     config = home / "config.toml"
     manifest = home / "notifications" / "telegram-hook.json"
     with _lock(home):
@@ -387,13 +390,17 @@ def dedupe_moshi():
 
 
 def cli(argv=None):
-    parser = argparse.ArgumentParser(description="Register or deregister the Telegram hook. Package removal is separate (pip/venv).")
+    parser = argparse.ArgumentParser(description="DEPRECATED legacy Jcode hook adapter; generic Telegram attention requires no hook.")
     parser.add_argument("action", choices=("install", "uninstall", "status", "dedupe-moshi"))
     parser.add_argument("--command", metavar="PATH")
     parser.add_argument("--min-seconds", type=int, default=30)
     parser.add_argument("--events", choices=("lifecycle", "turn_end"), help="New installs default to lifecycle, existing installs retain their events.")
     parser.add_argument("--from-command", metavar="PATH")
     args = parser.parse_args(argv)
+    if not (os.environ.get("TELEGRAM_ALERTS_HOME") or os.environ.get("JCODE_HOME")):
+        print("Legacy Jcode hook operations require explicit TELEGRAM_ALERTS_HOME (or deprecated JCODE_HOME); generic attention needs no hook.", file=sys.stderr)
+        return 2
+    print("Warning: this legacy Jcode hook adapter is retained for compatibility; new owner handoffs use telegram-alerts attention.", file=sys.stderr)
     try:
         if args.action == "dedupe-moshi":
             if args.command is not None or args.events is not None or args.from_command is not None:

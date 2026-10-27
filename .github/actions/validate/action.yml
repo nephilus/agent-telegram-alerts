@@ -22,25 +22,28 @@ runs:
         trap 'rm -rf "$smoke_dir"' EXIT
         python -m venv "$smoke_dir/venv"
         "$smoke_dir/venv/bin/python" -m pip install --no-deps dist/*.whl
-        export JCODE_HOME="$smoke_dir/jcode"
-        mkdir -p "$JCODE_HOME"
+        export TELEGRAM_ALERTS_HOME="$smoke_dir/telegram-alerts"
+        mkdir -p "$TELEGRAM_ALERTS_HOME"
         cd "$smoke_dir"
-        "$smoke_dir/venv/bin/jcode-telegram" --help
+        "$smoke_dir/venv/bin/telegram-alerts" --help
+        "$smoke_dir/venv/bin/telegram-alerts" --version
+        "$smoke_dir/venv/bin/telegram-alerts" attention --help
         "$smoke_dir/venv/bin/jcode-telegram" --version
-        "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/jcode-telegram-alerts"; skill = root / "skills/owner-review/SKILL.md"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "name: owner-review" in skill.read_text(); reference = skill.parent / "references/inbox.md"; assert "[references/inbox.md](references/inbox.md)" in skill.read_text(); assert "Check permission before discovery" in reference.read_text()'
-        "$smoke_dir/venv/bin/jcode-telegram" review-host
-        test ! -e "$JCODE_HOME/notifications/telegram-review-policy.json"
-        "$smoke_dir/venv/bin/jcode-telegram" review-host device.tailnet.ts.net
-        "$smoke_dir/venv/bin/jcode-telegram" review-host off
-        "$smoke_dir/venv/bin/jcode-telegram" preview
+        "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/telegram-alerts"; skill = root / "skills/telegram/SKILL.md"; owner_skill = root / "skills/owner-review/SKILL.md"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "telegram-alerts attention" in skill.read_text(); assert "name: owner-review" in owner_skill.read_text(); reference = owner_skill.parent / "references/inbox.md"; assert "[references/inbox.md](references/inbox.md)" in owner_skill.read_text(); assert "Check permission before discovery" in reference.read_text()'
+        "$smoke_dir/venv/bin/telegram-alerts" review-host
+        test ! -e "$TELEGRAM_ALERTS_HOME/notifications/telegram-review-policy.json"
+        "$smoke_dir/venv/bin/telegram-alerts" review-host device.tailnet.ts.net
+        "$smoke_dir/venv/bin/telegram-alerts" review-host off
+        "$smoke_dir/venv/bin/telegram-alerts" preview
         for event in session_start turn_start completion error session_end; do
-          "$smoke_dir/venv/bin/jcode-telegram" preview --event "$event"
+          "$smoke_dir/venv/bin/telegram-alerts" preview --event "$event"
         done
-        "$smoke_dir/venv/bin/jcode-telegram" policy
-        "$smoke_dir/venv/bin/jcode-telegram" policy attention --enable completion --cooldown-seconds 300
-        "$smoke_dir/venv/bin/jcode-telegram" policy balanced --status-card off
+        "$smoke_dir/venv/bin/telegram-alerts" policy
+        "$smoke_dir/venv/bin/telegram-alerts" policy attention --enable completion --cooldown-seconds 300
+        "$smoke_dir/venv/bin/telegram-alerts" policy balanced --status-card off
+        "$smoke_dir/venv/bin/telegram-alerts-hook" --help
         "$smoke_dir/venv/bin/jcode-telegram-hook" --help
-        "$smoke_dir/venv/bin/jcode-telegram-hook" dedupe-moshi
-        "$smoke_dir/venv/bin/jcode-telegram-hook" install
-        "$smoke_dir/venv/bin/jcode-telegram-hook" status
-        "$smoke_dir/venv/bin/jcode-telegram-hook" uninstall
+        "$smoke_dir/venv/bin/telegram-alerts-hook" dedupe-moshi
+        "$smoke_dir/venv/bin/telegram-alerts-hook" install --command "$smoke_dir/venv/bin/telegram-alerts"
+        "$smoke_dir/venv/bin/telegram-alerts-hook" status
+        "$smoke_dir/venv/bin/telegram-alerts-hook" uninstall
