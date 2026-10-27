@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.8.0...v0.8.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **attention:** make attention agent-agnostic ([#34](https://github.com/nephilus/jcode-telegram-alerts/issues/34)) ([12ee0c1](https://github.com/nephilus/jcode-telegram-alerts/commit/12ee0c104b091dc37b3abcc584361c331ad26c8e))
+
 ## [0.8.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.7.0...v0.8.0) (2026-10-24)
 
 
