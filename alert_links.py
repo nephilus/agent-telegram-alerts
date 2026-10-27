@@ -6,7 +6,7 @@ only ASCII HTTPS public-DNS-shaped destinations are accepted, never fetched.
 """
 
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 _MAX_INPUT = 16000
 _MAX_URL = 512
@@ -24,6 +24,23 @@ _TOKEN = re.compile(
     re.IGNORECASE,
 )
 _START = re.compile(r"https://", re.IGNORECASE)
+_MAX_ACTION_URL = 2048
+_MAX_ACTION_FIELDS = 64
+_QUERY_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,127}\Z")
+_BAD_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_QUERY_ASSIGNMENT = re.compile(r"(?:^|[?&;])([A-Za-z][A-Za-z0-9_.-]{0,127})\s*=")
+_QUERY_CREDENTIALS = frozenset((
+    "token", "accesstoken", "refreshtoken", "idtoken", "oauthtoken",
+    "password", "passwd", "secret", "clientsecret", "apikey", "key",
+    "credential", "credentials", "authorization", "auth", "bearer",
+    "code", "codeverifier", "devicecode", "session", "sessionid",
+    "sessionkey", "sessiontoken", "signature", "sig", "jwt",
+    "xamzcredential", "xamzsignature", "xamzsecuritytoken",
+))
+_ACTION_TOKEN = re.compile(
+    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"
+    r"|\bbearer\s+\S+", re.IGNORECASE)
+_NESTED_USERINFO = re.compile(r"(?:https?|wss?)://[^/?#\s]*@", re.IGNORECASE)
 
 
 def _known(value, secrets):
@@ -87,6 +104,75 @@ def safe_url(value, secrets=()):
         return None
     canonical = "https://" + authority + path
     return None if _known(canonical, secrets) else canonical
+
+
+def _query_key(value):
+    return re.sub(r"[^a-z0-9]", "", value.casefold())
+
+
+def _credential_query_key(value):
+    key = _query_key(value)
+    return key in _QUERY_CREDENTIALS or key.endswith((
+        "token", "password", "passwd", "secret", "apikey", "credential",
+        "authorization", "signature", "codeverifier"))
+
+
+def _action_query_value(value, secrets):
+    # Inspect decoded values without rewriting the URL. Nested encodings must
+    # not conceal known secrets, credential assignments, or control characters.
+    for _ in range(4):
+        if (any(ord(c) < 32 or ord(c) > 126 for c in value)
+                or any(c in value for c in '\\<>"\'')
+                or _known(value, secrets) or _TOKEN.search(value)
+                or _ACTION_TOKEN.search(value) or _NESTED_USERINFO.search(value)
+                or any(_credential_query_key(match[1])
+                       for match in _QUERY_ASSIGNMENT.finditer(value))):
+            return False
+        try:
+            decoded = unquote(value, encoding="utf-8", errors="strict")
+        except UnicodeError:
+            return False
+        if decoded == value:
+            return True
+        value = decoded
+    return False
+
+
+def safe_action_url(value, secrets=()):
+    """Validate an explicit action URL, preserving accepted query bytes.
+
+    Routine extraction still uses safe_url. Action queries permit public login
+    request identifiers and PKCE challenges, not credentials or returned codes.
+    Validation is offline and does not establish destination reachability.
+    """
+    if not isinstance(value, str) or "?" not in value:
+        return safe_url(value, secrets)
+    if (not value or len(value) > _MAX_ACTION_URL
+            or any(ord(c) < 33 or ord(c) > 126 for c in value)
+            or any(c in value for c in '\\#[]"\'<>')):
+        return None
+    secrets = tuple(secrets)
+    base, query = value.split("?", 1)
+    if (safe_url(base, secrets) is None or not query or _BAD_ESCAPE.search(query)
+            or _known(value, secrets) or _TOKEN.search(value)):
+        return None
+    try:
+        fields = parse_qsl(query, keep_blank_values=True, strict_parsing=True,
+                           encoding="utf-8", errors="strict",
+                           max_num_fields=_MAX_ACTION_FIELDS)
+    except (ValueError, UnicodeError):
+        return None
+    seen = set()
+    for name, content in fields:
+        key = _query_key(name)
+        if (not _QUERY_NAME.fullmatch(name) or key in seen
+                or _credential_query_key(name)
+                or not _action_query_value(name, secrets)
+                or not _action_query_value(content, secrets)):
+            return None
+        seen.add(key)
+    # Do not re-encode or canonicalize a generated authentication request.
+    return value if fields else None
 
 
 def _label(url):

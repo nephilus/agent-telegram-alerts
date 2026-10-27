@@ -6,7 +6,7 @@ import time
 from urllib.parse import urlsplit
 
 import alert_format as formatting
-from alert_links import safe_url, _known, _TOKEN, _MAX_URL
+from alert_links import safe_action_url, safe_url, _known, _TOKEN, _MAX_URL
 import alert_policy as policy
 
 MAX_INPUT_BYTES = 8192
@@ -143,9 +143,9 @@ def render(request, environment, home, secrets=(), *, review_port=None):
             raise AttentionError("Attention link labels must be single-line, non-sensitive text.")
         review = _review_url(link['url'], host, review_port, secrets) if host else None
         matched_review = matched_review or review is not None
-        target = review or safe_url(link["url"], secrets)
+        target = review or safe_action_url(link["url"], secrets)
         if target is None:
-            raise AttentionError("Attention link rejected: use a verified public-DNS HTTPS URL without credentials, query, fragment, escapes or a non-443 port. No message sent.")
+            raise AttentionError("Attention link rejected: use a public-DNS HTTPS URL without credentials, sensitive query fields, fragments, unsafe escapes or a non-443 port. No message sent.")
         # Show the destination host even when the agent supplies a friendly label.
         links.append({"label": label + " · " + urlsplit(target).netloc, "url": target})
     if review_port is not None and not matched_review:

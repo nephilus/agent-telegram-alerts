@@ -142,7 +142,9 @@ The key identifies one decision at one reviewed revision. Reuse it across contin
 
 Success prints JSON with `state: sent`, `response_confirmed` and `formatting_confirmed`; duplicates print `state: already_sent`. Failures exit nonzero with a controlled diagnostic. Success requires the Telegram-returned message ID, text and exact bold/link entities. There are no automatic retries: after a timeout or unconfirmed response, delivery may already have occurred. A Telegram acknowledgment is not proof that the owner read or approved anything.
 
-The existing conservative URL rules remain the default. Unsupported private/IP targets, non-443 ports, credential-shaped paths and query/fragment/signed links are rejected visibly, not silently replaced with `[link]`. Do not strip sensitive parameters to manufacture an apparently acceptable destination.
+Explicit attention links accept non-secret query parameters, including login request identifiers, OAuth state/nonce values and PKCE challenges. The exact supplied URL is preserved, including parameter order and percent encoding. URLs are bounded to 2048 characters and 64 query fields. Put the service-issued URL in `links`; raw text, Markdown wrappers and shorteners are not substitutes for validation.
+
+Private/IP targets, non-443 ports, credential-shaped paths, fragments, malformed escapes, duplicate normalized query names and raw or decoded controls remain rejected. Query fields carrying credentials, returned authorization codes, PKCE verifiers, tokens or signatures are rejected, as are known secrets in decoded values. These checks are best effort, not comprehensive data-loss prevention. Accepted query values are intentionally forwarded to Telegram, so the caller must confirm that the service intends the URL for the owner. Do not strip parameters to manufacture an apparently acceptable destination. Routine output extraction and the non-443 review-host exception retain their existing restrictions. See [ADR 0003](docs/adrs/0003-explicit-action-query-links.md).
 
 ### Optional Plannotator owner workflow
 
