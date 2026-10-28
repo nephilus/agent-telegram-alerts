@@ -25,7 +25,7 @@ class HookInstallTests(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.config = self.home / "config.toml"
         self.manifest = self.home / "notifications" / "telegram-hook.json"
-        self.exe = self.home / "bin space's" / "telegram-alerts"
+        self.exe = self.home / "bin space's" / "telegram-alerts-jcode"
         self.exe.parent.mkdir()
         self.exe.write_text("#!/bin/sh\nexit 0\n")
         self.exe.chmod(0o700)

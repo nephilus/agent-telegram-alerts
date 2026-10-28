@@ -18,6 +18,7 @@ import alert_format as fmt
 import alert_policy as policy
 import alert_selector as selector
 import telegram_alerts as app
+import legacy_jcode as legacy
 
 
 class SelectorIntegrationTests(unittest.TestCase):
@@ -85,8 +86,8 @@ class SelectorIntegrationTests(unittest.TestCase):
             self.calls.append((method, copy.deepcopy(body)))
             return {**body, "message_id": len(self.calls)}
 
-        with patch.dict(os.environ, self.environment), patch.object(selector, "process", side_effect=process), patch.object(app, "api", side_effect=telegram):
-            app.observe_event(self.environment, min_seconds=30)
+        with patch.dict(os.environ, self.environment), patch.object(selector, "process", side_effect=process), patch.object(legacy, "api", side_effect=telegram):
+            legacy.observe_event(self.environment, min_seconds=30)
         kind = "error" if self.environment.get("JCODE_HOOK_STATUS") == "error" else "completion"
         return json.loads((self.home / ("notifications/telegram-last-" + kind + ".json")).read_text())
 
@@ -244,7 +245,7 @@ class SelectorIntegrationTests(unittest.TestCase):
     def test_selector_cli_queries_read_only_and_off_never_restores_unfiltered_pushes(self):
         self.enable()
         config_before = (self.home / "config.toml").read_bytes()
-        command = [sys.executable, "-B", str(Path(app.__file__))]
+        command = [sys.executable, "-B", str(Path(legacy.__file__))]
         environment = {**os.environ, "TELEGRAM_ALERTS_HOME": str(self.home)}
         queried = subprocess.run(command + ["selector"], env=environment, capture_output=True, text=True, check=True)
         result = json.loads(queried.stdout)

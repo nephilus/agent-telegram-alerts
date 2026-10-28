@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import telegram_alerts as app
+import legacy_jcode as app
 
 
 class EventInterfaceTests(unittest.TestCase):
@@ -75,7 +75,7 @@ class EventInterfaceTests(unittest.TestCase):
             def deliver(token, method, body):
                 calls.append(method)
                 return {**body, "message_id": 7}
-            with patch.object(app, "api", side_effect=deliver), patch.object(app.sys, "argv", ["telegram-alerts", "event", "--min-seconds", "0"]):
+            with patch.object(app, "api", side_effect=deliver), patch.object(app.sys, "argv", ["telegram-alerts-jcode", "event", "--min-seconds", "0"]):
                 app.main()
                 self.assertEqual(calls, [])
                 self.assertEqual(json.loads(app.receipt_path().read_text())["state"], "disabled")

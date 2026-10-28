@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import telegram_alerts as app
+import legacy_jcode as legacy
 
 
 class ConsoleTests(unittest.TestCase):
@@ -39,9 +40,9 @@ class ConsoleTests(unittest.TestCase):
 
     def test_nested_bad_preference_falls_back_without_traceback(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
-            app.settings_path().parent.mkdir(parents=True)
-            app.settings_path().write_text("[" * 1100 + "0" + "]" * 1100)
-            self.assertEqual(app.selected_verbosity(), "brief")
+            legacy.settings_path().parent.mkdir(parents=True)
+            legacy.settings_path().write_text("[" * 1100 + "0" + "]" * 1100)
+            self.assertEqual(legacy.selected_verbosity(), "brief")
 
     def test_malformed_safety_table_fails_closed_without_disclosing_values(self):
         for command in ("status", "disable"):
@@ -76,6 +77,23 @@ class ConsoleTests(unittest.TestCase):
             self.assertFalse(updated["safety"]["telegram_enabled"])
             self.assertNotIn("PRIVATE_CONFIG_VALUE", disabled.stdout + disabled.stderr)
 
+    def test_legacy_status_keeps_event_verbosity_and_card_policy_visible(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
+            legacy.core.private_write(legacy.settings_path(), '{"verbosity":"brief"}\n')
+            legacy.alert_policy.save_policy(directory, {"status_card": True})
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                legacy.main(["status"])
+            self.assertIn("Legacy event verbosity: brief", output.getvalue())
+            self.assertIn("Status card: on", output.getvalue())
+
+    def test_legacy_console_wrapper_masks_filesystem_error_contents(self):
+        with patch.object(legacy, "main", side_effect=OSError("PRIVATE_ADAPTER_ERROR")), \
+                contextlib.redirect_stderr(io.StringIO()) as output:
+            self.assertEqual(legacy.cli(), 1)
+        self.assertIn("Legacy Jcode adapter state could not be used safely", output.getvalue())
+        self.assertNotIn("PRIVATE_ADAPTER_ERROR", output.getvalue())
+
     def test_malformed_receipt_does_not_break_status(self):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / "notifications" / "telegram-last-alert.json"
@@ -84,8 +102,10 @@ class ConsoleTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(Path(app.__file__)), "status"],
                                     env={**os.environ, "TELEGRAM_ALERTS_HOME": directory},
                                     capture_output=True, text=True, check=True)
-            self.assertIn("none recorded yet", result.stdout)
+            self.assertIn("no native session or lifecycle hook is read", result.stdout)
+            self.assertNotIn("none recorded yet", result.stdout)
             self.assertNotIn("PRIVATE_DIAGNOSTIC_VALUE", result.stdout + result.stderr)
+            self.assertEqual(receipt.read_text(), '["PRIVATE_DIAGNOSTIC_VALUE"]')
 
 
 if __name__ == "__main__":

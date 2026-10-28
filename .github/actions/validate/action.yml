@@ -29,6 +29,17 @@ runs:
         "$smoke_dir/venv/bin/telegram-alerts" --version
         "$smoke_dir/venv/bin/telegram-alerts" attention --help
         "$smoke_dir/venv/bin/jcode-telegram" --version
+        env -u JCODE_SESSION_ID -u JCODE_HOOK_EVENT -u JCODE_HOOK_STATUS "$smoke_dir/venv/bin/jcode-telegram" status
+        env -u JCODE_SESSION_ID -u JCODE_HOOK_EVENT -u JCODE_HOOK_STATUS "$smoke_dir/venv/bin/jcode-telegram" preview
+        if env -u JCODE_SESSION_ID -u JCODE_HOOK_EVENT -u JCODE_HOOK_STATUS "$smoke_dir/venv/bin/jcode-telegram" event; then
+          echo "generic jcode-telegram unexpectedly accepted the legacy event command" >&2
+          exit 1
+        else
+          result=$?
+          test "$result" -eq 2
+        fi
+        "$smoke_dir/venv/bin/telegram-alerts-jcode" --help
+        "$smoke_dir/venv/bin/telegram-alerts-jcode" status
         "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/telegram-alerts"; skill = root / "skills/telegram/SKILL.md"; owner_skill = root / "skills/owner-review/SKILL.md"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "telegram-alerts attention" in skill.read_text(); assert "name: owner-review" in owner_skill.read_text(); reference = owner_skill.parent / "references/inbox.md"; assert "[references/inbox.md](references/inbox.md)" in owner_skill.read_text(); assert "Initialization/tool listing can start Inbox" in reference.read_text(); assert "Never test or connect an OFF service to check it" in reference.read_text()'
         "$smoke_dir/venv/bin/telegram-alerts" review-host
         test ! -e "$TELEGRAM_ALERTS_HOME/notifications/telegram-review-policy.json"
@@ -36,14 +47,14 @@ runs:
         "$smoke_dir/venv/bin/telegram-alerts" review-host off
         "$smoke_dir/venv/bin/telegram-alerts" preview
         for event in session_start turn_start completion error session_end; do
-          "$smoke_dir/venv/bin/telegram-alerts" preview --event "$event"
+          "$smoke_dir/venv/bin/telegram-alerts-jcode" preview --event "$event"
         done
-        "$smoke_dir/venv/bin/telegram-alerts" policy
-        "$smoke_dir/venv/bin/telegram-alerts" policy attention --enable completion --cooldown-seconds 300
-        "$smoke_dir/venv/bin/telegram-alerts" policy balanced --status-card off
+        "$smoke_dir/venv/bin/telegram-alerts-jcode" policy
+        "$smoke_dir/venv/bin/telegram-alerts-jcode" policy attention --enable completion --cooldown-seconds 300
+        "$smoke_dir/venv/bin/telegram-alerts-jcode" policy balanced --status-card off
         "$smoke_dir/venv/bin/telegram-alerts-hook" --help
         "$smoke_dir/venv/bin/jcode-telegram-hook" --help
         "$smoke_dir/venv/bin/telegram-alerts-hook" dedupe-moshi
-        "$smoke_dir/venv/bin/telegram-alerts-hook" install --command "$smoke_dir/venv/bin/telegram-alerts"
+        "$smoke_dir/venv/bin/telegram-alerts-hook" install --command "$smoke_dir/venv/bin/telegram-alerts-jcode"
         "$smoke_dir/venv/bin/telegram-alerts-hook" status
         "$smoke_dir/venv/bin/telegram-alerts-hook" uninstall

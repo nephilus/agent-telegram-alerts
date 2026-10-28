@@ -12,9 +12,9 @@ python -m unittest discover -v
 python -m build
 ```
 
-Use temporary `TELEGRAM_ALERTS_HOME` directories for development. Never use a maintainer's bot credentials or real transcripts in tests. Add synthetic regressions for parser, redaction, session-association, encoding, and configuration changes. A unit test or mocked Telegram response does not replace a real integration check when delivery behavior changes.
+Use temporary `TELEGRAM_ALERTS_HOME` directories for development. Never use a maintainer's bot credentials or real transcripts in tests. Add synthetic regressions for parser, redaction, session-association, encoding, and configuration changes. The generic CLI must work without Jcode state and must not dispatch events from `JCODE_HOOK_*`; keep native-session tests behind `telegram-alerts-jcode`. A unit test or mocked Telegram response does not replace a real integration check when delivery behavior changes.
 
-Do not run `setup`, `test`, or an unsuppressed send against a real profile without the account owner's authorization. Those operations may send messages or modify the selected Telegram Alerts profile; they do not modify native Jcode settings unless an operator explicitly selects a Jcode home. `preview` is the safe no-send entrypoint.
+Do not run `setup`, `test`, or an unsuppressed send against a real profile without the account owner's authorization. Those operations may send messages or modify the selected Telegram Alerts profile; they do not modify native Jcode settings unless an operator explicitly selects a Jcode home. `telegram-alerts preview` is generic and safe without Jcode state; `telegram-alerts-jcode preview` is an explicit adapter preview and may read a saved native session when `--session` is supplied.
 
 ## Commits and pull requests
 
@@ -31,8 +31,8 @@ Keep the type lowercase and the subject on one line. Mark breaking changes with 
 Before requesting review:
 
 1. Run the tests and build a wheel/source archive.
-2. Install the wheel in a fresh virtual environment and exercise `telegram-alerts --help`, `preview`, and `attention --help` with a temporary `TELEGRAM_ALERTS_HOME`; verify that the `jcode-telegram` compatibility alias uses the same home.
-3. If touching the deprecated hook adapter, exercise it only with an explicitly selected temporary home and confirm unrelated hooks/credentials remain intact.
+2. Install the wheel in a fresh virtual environment and exercise `telegram-alerts --help`, generic `preview`, and `attention --help` with a temporary `TELEGRAM_ALERTS_HOME`; verify that the thin `jcode-telegram` alias uses the same home and has no event/session commands.
+3. If touching `telegram-alerts-jcode` or its deprecated hook adapter, exercise it only with an explicitly selected temporary home and confirm unrelated hooks/credentials remain intact.
 4. Scan the diff for secrets and personal paths. Use Gitleaks locally when available.
 5. Describe observed behavior, known limitations, and any integration check that could not be performed.
 

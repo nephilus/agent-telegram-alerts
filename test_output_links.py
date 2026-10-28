@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import alert_format as fmt
 import alert_policy as policy
-import telegram_alerts as app
+import legacy_jcode as app
 
 
 PR = "https://github.com/example/project/pull/42"

@@ -161,10 +161,10 @@ def _edit(raw, document, value, event="turn_end"):
 
 def _command(explicit, seconds, verb="alert"):
     if explicit is None:
-        sibling = Path(sys.argv[0]).absolute().parent / "telegram-alerts"
-        explicit = str(sibling) if sibling.is_file() and os.access(sibling, os.X_OK) else shutil.which("telegram-alerts")
+        sibling = Path(sys.argv[0]).absolute().parent / "telegram-alerts-jcode"
+        explicit = str(sibling) if sibling.is_file() and os.access(sibling, os.X_OK) else shutil.which("telegram-alerts-jcode")
     if not explicit:
-        raise HookError("Cannot find an executable telegram-alerts.")
+        raise HookError("Cannot find an executable telegram-alerts-jcode adapter.")
     path = Path(explicit).absolute()
     if not path.is_file() or not os.access(path, os.X_OK):
         raise HookError("Command must be an existing executable file.")
@@ -186,6 +186,7 @@ def _is_alert_hook(command):
                     re.search(r"\b(?:alert|event)\b", command))
     direct = any(Path(executable).name in
                  {"telegram-alerts", "telegram-alerts.py", "telegram_alerts.py",
+                  "telegram-alerts-jcode", "telegram-alerts-jcode.py",
                   "jcode-telegram", "jcode-telegram.py", "jcode_telegram.py"}
                  and argument in {"alert", "event"}
                  for executable, argument in zip(words, words[1:]))
