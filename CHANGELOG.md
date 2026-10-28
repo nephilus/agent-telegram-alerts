@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/nephilus/agent-telegram-alerts/compare/v0.8.0...v0.9.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **alerts:** generalize Telegram CLI and rewrite Inbox links ([#36](https://github.com/nephilus/agent-telegram-alerts/issues/36))
+
+### Features
+
+* **alerts:** generalize Telegram CLI and rewrite Inbox links ([#36](https://github.com/nephilus/agent-telegram-alerts/issues/36)) ([d5673df](https://github.com/nephilus/agent-telegram-alerts/commit/d5673df37fab9f49294cb2b0b74f39bb3d4a6117))
+
+
+### Bug Fixes
+
+* **attention:** make attention agent-agnostic ([#34](https://github.com/nephilus/agent-telegram-alerts/issues/34)) ([12ee0c1](https://github.com/nephilus/agent-telegram-alerts/commit/12ee0c104b091dc37b3abcc584361c331ad26c8e))
+
 ## [0.8.0](https://github.com/nephilus/jcode-telegram-alerts/compare/v0.7.0...v0.8.0) (2026-10-24)
 
 
