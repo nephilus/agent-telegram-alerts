@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.0](https://github.com/nephilus/agent-telegram-alerts/compare/v0.9.0...v0.10.0) (2026-10-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* isolate legacy Jcode lifecycle adapter ([#41](https://github.com/nephilus/agent-telegram-alerts/issues/41))
+
+### Features
+
+* isolate legacy Jcode lifecycle adapter ([#41](https://github.com/nephilus/agent-telegram-alerts/issues/41)) ([3808c70](https://github.com/nephilus/agent-telegram-alerts/commit/3808c70b49d6f924de26a22e053af4714125c3b1))
+
+
+### Bug Fixes
+
+* **attention:** accept registered direct Inbox links ([#39](https://github.com/nephilus/agent-telegram-alerts/issues/39)) ([b442acc](https://github.com/nephilus/agent-telegram-alerts/commit/b442accba48f900b80770fdaca27362b7681e97d))
+
 ## [0.9.0](https://github.com/nephilus/agent-telegram-alerts/compare/v0.8.0...v0.9.0) (2026-10-27)
 
 
