@@ -43,6 +43,7 @@ py-modules = ["telegram_alerts", "legacy_jcode", "alert_home", "alert_format", "
 
 [tool.setuptools.data-files]
 "share/telegram-alerts/prompts" = ["prompts/owner-workflow.md"]
+"share/telegram-alerts/prompts/clef" = ["prompts/clef/manifest.json"]
 "share/telegram-alerts/skills/owner-review" = ["skills/owner-review/SKILL.md"]
 "share/telegram-alerts/skills/owner-review/references" = ["skills/owner-review/references/inbox.md"]
 "share/telegram-alerts/skills/telegram" = ["skills/telegram/SKILL.md"]

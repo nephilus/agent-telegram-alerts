@@ -8,7 +8,8 @@
 | Build wheel and source archive | Distributable packaging from the public source | That an installed console command or hook runs correctly |
 | Install wheel in a fresh environment and invoke public commands | Real packaged imports, entrypoints, version, no-send previews, and hook registration/removal | Delivery to a real bot |
 | Hosted CI on Linux/macOS and supported Python versions | Generic CLI/source/packaging and opt-in adapter workflows work on runner environments | Compatibility of the optional legacy event adapter with every Jcode release |
-| Real generic `telegram-alerts attention` call with `JCODE_SESSION_ID` unset | Installed CLI accepts the request and Telegram returns the exact text/link formatting receipt | Phone notification visibility, user reading, or correctness of the assistant's task claims |
+| Offline generic `telegram-alerts update` tests with a deterministic injected prompt fixture | YES forwards the original sanitized summary/project/validated links; NO, unavailable key/prompt, busy state and malformed decisions fail closed; context is never sent to Telegram or retained | Accuracy of an owner-vetted production prompt or real Clef/Telegram availability |
+| Real generic `telegram-alerts attention` call with `JCODE_SESSION_ID` unset | Installed CLI accepts the request and Telegram returns the exact neutral-template/link formatting receipt | Phone notification visibility, user reading, or correctness of the assistant's task claims |
 
 ## Repeat the local package workflow
 
@@ -30,6 +31,8 @@ Use a fresh temporary `TELEGRAM_ALERTS_HOME`, then run the installed commands ra
 export TELEGRAM_ALERTS_HOME=/path/to/temporary-telegram-alerts-home
 /path/to/fresh-smoke-environment/bin/telegram-alerts --version
 /path/to/fresh-smoke-environment/bin/telegram-alerts preview
+/path/to/fresh-smoke-environment/bin/telegram-alerts update --help
+/path/to/fresh-smoke-environment/bin/telegram-alerts clef status
 /path/to/fresh-smoke-environment/bin/telegram-alerts-jcode preview
 /path/to/fresh-smoke-environment/bin/telegram-alerts-jcode verbosity brief
 /path/to/fresh-smoke-environment/bin/telegram-alerts-jcode preview
@@ -61,7 +64,7 @@ The public repository starts with sanitized source history. Private prototype hi
 
 ## Live acceptance
 
-Only run a live send with the account owner's authorization. Do not put Telegram credentials into CI. For generic acceptance, invoke the installed `telegram-alerts attention` command directly with `JCODE_SESSION_ID` unset; a Jcode tool invocation or hook is not required. Use an explicitly selected `TELEGRAM_ALERTS_HOME` when the Telegram profile is not in the generic default home.
+Only run a live send with the account owner's authorization. Do not put Telegram credentials into CI. For generic acceptance, the offline update tests use only deterministic fixture questions. In the current owner-vet hold, there is deliberately no generic prompt asset; an update submission should return a structured `prompt_unavailable` suppression and must not contact Clef or Telegram. Do not live-evaluate or activate a prompt until its exact revision is owner-approved. If a future approved build has a versioned resource, validate its installed package loader and run any live Clef test only with separate owner authorization. A real `telegram-alerts attention` acceptance call is a different explicit direct-send path; it may be exercised only with owner authorization and `JCODE_SESSION_ID` unset. Use an explicitly selected `TELEGRAM_ALERTS_HOME` when the Telegram profile is not in the generic default home.
 
 For `attention`, check the printed receipt has `state: sent`, `response_confirmed: true`, and `formatting_confirmed: true`. For an Inbox link, verify the receipt's origin mapping and that the sent `text_link` entity points at the registered `tailscale.url` while retaining path/query/fragment bytes. The CLI has no automatic retry; a timeout or unconfirmed response may mean delivery happened.
 

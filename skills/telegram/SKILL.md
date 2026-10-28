@@ -1,46 +1,33 @@
 ---
 name: telegram
-description: "Send concise owner notifications and actionable handoffs with the generic Telegram Alerts CLI."
+description: "Send relevance-selected generic updates or explicitly requested owner handoffs through Telegram Alerts."
 ---
 
 # Telegram owner notifications
 
-**Use for:** An owner notification, an explicitly requested Telegram update, or an owner-dependent handoff before waiting. Do not narrate every command or duplicate routine notifications.
+Use for one material update or explicit owner handoff, not routine command narration. “Needs you,” urgency, or a review URL alone does not request direct delivery. `attention` deliberately bypasses Clef; use it only for explicit direct-send intent or a required review/authentication link, never as a fallback when Clef is unavailable.
 
-**Produce:** A concise message through the configured Telegram Alerts CLI and retain the actual receipt. A Telegram acknowledgment proves delivery formatting, not readership or approval.
+## Routine Clef-gated updates
 
-## Actionable owner handoff
+Submit one UTF-8 JSON object with `telegram-alerts update --key STABLE_CANDIDATE_ID`:
 
-- Use `telegram-alerts attention` from any shell or agent tool. It does not require a Jcode session, native Jcode CLI, or hook. A legacy session include-list may still require a matching optional `JCODE_SESSION_ID`; otherwise no session ID is needed.
-- Obtain the reviewed revision and stable decision key from `owner-review`. Use `<owner>/<repo>:<decision>:<revision>` and reuse that key for the same decision/revision.
-- Send one UTF-8 JSON object on stdin. `context` and `needs_you` are required; `recommendation` and up to three `{ "label", "url" }` links are optional. Put URLs only in `links`, never in text fields.
+- required `summary` (≤400 characters);
+- optional gate-only `context` (≤3,000 characters);
+- optional explicit `project` (≤120 characters; never infer from CWD);
+- optional up to three `{ "label", "url" }` links.
 
-```sh
-telegram-alerts attention --key owner/repo:decision:revision <<'JSON'
-{
-  "context": "The reviewed change is ready for an owner decision.",
-  "needs_you": "Choose the approved rollout option.",
-  "recommendation": "Use the staged option because it preserves rollback.",
-  "links": [{"label": "Review", "url": "https://github.com/owner/repo/pull/123"}]
-}
-JSON
-```
+The 8,192-byte input limit, duplicate/unknown-key refusal, and link validation are enforced by the CLI. **Put URLs only in `links`.** Generic Clef settings belong to the selected Alerts home; they never inherit a Jcode selector or key. `status` and `preview` never infer. The generic command does not require a Jcode session or read native sessions/lifecycle hooks.
 
-Use the actual published revision and verified destination, not the illustrative values above. The CLI rejects unsafe or malformed requests before sending. Its input is bounded to 8192 bytes and rejects duplicate/unknown keys.
+Clef receives only summary/context/project; links are not relevance evidence. Context goes only to the configured decision endpoint, never to Telegram or update diagnostics. YES sends the original sanitized summary, explicit project, and validated links in the neutral `🔔 Update` template. NO, missing prompt/config/key, busy state, transport errors, or invalid decisions suppress delivery with a structured receipt. The versioned prompt manifest is intentionally empty pending owner vet, so updates currently return `prompt_unavailable` without inference or delivery. Do not switch to `attention` when Clef is unavailable.
 
-## Plannotator Inbox links
+Use a stable candidate key. Repeated identical candidates are idempotent; changed content is a new decision. Ambiguous delivery may have arrived: do not change the key to force another send or retry automatically.
 
-Pass the Inbox URL exactly as returned by Plannotator in `links[].url`; do not rewrite or store a replacement in the request. At send time, the CLI reads `~/.plannotator/inbox/inbox.json` read-only and uses its registered `port` and `tailscale.url`.
+## Explicit owner handoffs
 
-Only the exact `http://localhost:<registered-port>` and `http://127.0.0.1:<registered-port>` prefixes are rewritten. The path, query, and fragment (including `#thread=...`) are preserved byte-for-byte in the Telegram link. Other loopback URLs are not rewritten and remain subject to normal URL validation. Set `TELEGRAM_ALERTS_INBOX_REGISTRY` to select another registry path or `TELEGRAM_ALERTS_INBOX_BASE_URL` to explicitly override the published base. If no trusted tailnet URL is available, the local Inbox link is omitted with a warning; the alert still sends. Never invent or guess a tailnet mapping.
+`telegram-alerts attention` sends directly and bypasses Clef. The compatibility JSON requires `context` (≤400 characters) and `needs_you` (≤800); `recommendation` (≤600) and up to three links are optional. It uses the same neutral heading, without inferred project or invocation CWD. Keep a stable decision/revision key. **Do not automatically retry. Use `--resend` only after an explicit owner request.** Link syntax does not prove reachability or authorization.
 
-The receipt reports the rewritten source and destination origins without echoing the private path, query, or thread fragment. The request is not mutated or saved by rewriting.
+## Inbox links and receipts
 
-## Delivery and retries
+Pass the exact Plannotator Inbox URL in `links[].url`; do not rewrite it in the request. The CLI reads `~/.plannotator/inbox/inbox.json` read-only and uses its registered `port` and `tailscale.url`. Only `http://localhost:<registered-port>` and `http://127.0.0.1:<registered-port>` are rewritten. The outgoing path, query, and fragment are preserved byte-for-byte. If a trusted mapping is unavailable, the local link is omitted with a warning; never invent a mapping. `TELEGRAM_ALERTS_INBOX_REGISTRY` and `TELEGRAM_ALERTS_INBOX_BASE_URL` select registry/base overrides.
 
-- Check and retain the CLI's printed receipt. `state: sent`, `response_confirmed`, and `formatting_confirmed` are required evidence of an acknowledged delivery. `already_sent` means this invocation did not contact Telegram.
-- Do not automatically retry a failed or ambiguous send; it may already have arrived. Use `--resend` only after an explicit owner request.
-- A delivery receipt is not proof that the owner saw or approved the message. Follow `owner-review` for authorization and revision correlation.
-- Do not add a bot, poller, hook, or notification service, and do not change credentials, trust, or delivery policy to force a send. If the CLI or Telegram profile is unavailable, report the prerequisite instead.
-
-The Telegram profile is independent of Jcode session state. `TELEGRAM_ALERTS_HOME` selects the profile; the CLI defaults to `~/.config/telegram-alerts`. Existing installations may read the old Telegram-only credentials from `~/.jcode` in read-only compatibility mode, with a notice; all new writes go to the selected Alerts home.
+A receipt with `state: sent`, `response_confirmed`, and `formatting_confirmed` is delivery evidence, not proof of readership or approval. A suppression is not a delivery receipt. Generic commands do not require a Jcode session; a matching optional `JCODE_SESSION_ID` is used only by legacy compatibility filters. The profile defaults to `~/.config/telegram-alerts`; `TELEGRAM_ALERTS_HOME` selects another home. The old `~/.jcode/config.toml` is a read-only Telegram-credentials fallback only; it never supplies Clef configuration.

@@ -4,18 +4,19 @@
 [![Release](https://img.shields.io/github/v/release/nephilus/agent-telegram-alerts)](https://github.com/nephilus/agent-telegram-alerts/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Generic Telegram delivery for agent notifications and owner handoffs.** Use `telegram-alerts attention` or the packaged `/telegram` skill from any agent or shell; neither requires a Jcode session, native CLI, or hook. Existing Jcode event-hook alerts remain an optional compatibility adapter.
+**Generic Telegram delivery for agent updates and owner handoffs.** Use `telegram-alerts update` for a routine candidate that must pass Clef selection, or `telegram-alerts attention` for an explicitly requested direct send. Neither requires Jcode session state or hooks. The approved generic prompt resource is not yet packaged on this branch, so routine updates intentionally fail closed until owner vet and integration.
 
 > The generic CLI and `/telegram` skill do not read native sessions or install/invoke lifecycle hooks. `jcode-telegram` remains a thin deprecated alias for the same generic CLI; legacy event, selector, and saved-session preview behavior is isolated in the separately invoked `telegram-alerts-jcode` adapter. No remote-command server is added.
 
 ## What it does
 
-- Sends explicit owner handoffs immediately through the generic CLI and `/telegram` skill.
+- Accepts concise, caller-written generic update candidates; a versioned Clef YES/NO gate sends the unchanged sanitized summary only on YES. The owner-vetted production prompt resource is a separate pending integration.
+- Sends explicit owner handoffs immediately through the generic CLI and `/telegram` skill, bypassing Clef by deliberate command choice.
 - Keeps the deprecated native-session lifecycle, selector, and event-policy features behind the separate, explicit `telegram-alerts-jcode` adapter; the generic CLI never dispatches `JCODE_HOOK_*` events.
 - Legacy event mode offers an optional editable session status card instead of a stream of routine messages.
 - Legacy event mode offers **brief**, **contextual**, and **expanded** profiles. Expanded is the default.
 - Uses bold headings, readable section spacing, useful emojis, and compact clickable output links.
-- Legacy event mode can ask Clef to select completion updates, forwarding the original reply rather than generating another summary. Generic attention and errors remain independent.
+- Generic `update` never asks a model to summarize; `attention` remains a separate explicit send. The optional Jcode adapter's completion selector remains isolated and back-compatible.
 - Links a dedicated bot through a private-chat challenge and hidden terminal token entry.
 - Keeps a deprecated Jcode hook adapter for existing installations; generic attention does not install or require hooks.
 - Uses only the Python standard library at runtime. Python **3.11+** and Linux/macOS are supported.
@@ -50,6 +51,8 @@ python3 -m venv "$HOME/.local/share/agent-telegram-alerts/venv"
 python -m pip install "git+https://github.com/nephilus/agent-telegram-alerts.git@main"
 telegram-alerts --version
 telegram-alerts preview
+telegram-alerts update --help
+telegram-alerts clef status
 telegram-alerts attention --help
 ```
 
@@ -63,7 +66,7 @@ The legacy adapter and hook installer remain only for deliberate maintenance of 
 
 The writable profile defaults to `~/.config/telegram-alerts`. `TELEGRAM_ALERTS_HOME` overrides it; deprecated `JCODE_HOME` is honored only when the new variable is unset. This profile stores Telegram credentials and alert settings, not Jcode session state.
 
-For an existing installation with no usable Telegram credentials in the default generic home, the CLI reads only the Telegram safety fields from `~/.jcode/config.toml` in read-only compatibility mode and prints a notice. New configuration, policy, receipts and dedup state are written under the selected generic home. Legacy policy and attention-dedup files are consulted read-only when the corresponding generic file is absent; they are not copied. Review-host trust, selector data and preferences are not migrated automatically. An explicit home override disables the fallback.
+For an existing installation with no usable Telegram credentials in the default generic home, the CLI reads only the Telegram safety fields from `~/.jcode/config.toml` in read-only compatibility mode and prints a notice. New configuration, policy, receipts and dedup state are written under the selected generic home. Legacy policy and attention-dedup files are consulted read-only when the corresponding generic file is absent; they are not copied. Generic Clef configuration is read only from the selected generic home; old Jcode selector endpoints/keys are never inherited or migrated. Review-host trust, selector data and preferences are not migrated automatically. An explicit home override disables the Telegram fallback.
 
 To move a profile, use `telegram-alerts setup` in your own terminal or manually create a generic config containing only the intended Telegram safety fields. Do not copy the whole Jcode `config.toml`, which contains unrelated native settings. A fallback directory named `.jcode` is a compatibility source, not a runtime dependency.
 
@@ -96,9 +99,9 @@ To retire the managed integration instead, run `TELEGRAM_ALERTS_HOME="$HOME/.jco
 
 The generic alias continues to use the same home resolution as `telegram-alerts`, including `TELEGRAM_ALERTS_HOME > JCODE_HOME > ~/.config/telegram-alerts`; it never loads native session data.
 
-## Working folder, duration and request context
+## Legacy event working folder, duration and request context
 
-The `📁` line shows the native session working-folder path rather than guessing a project name from its last component or an arbitrary session name. Your home directory is abbreviated as `~`; long paths are shortened from the left while retaining the leaf. Missing folder metadata is labeled unavailable, never replaced with the observer process's own directory.
+In legacy Jcode event alerts, the `📁` line shows the native session working-folder path rather than guessing a project name from its last component or an arbitrary session name. Generic `update` displays only the caller-supplied explicit project; generic `attention` displays no project or invocation CWD. In event alerts, your home directory is abbreviated as `~`; long paths are shortened from the left while retaining the leaf. Missing folder metadata is labeled unavailable, never replaced with the observer process's own directory.
 
 This is the session's working folder, **not necessarily the repository a tool last edited**. For example, a session started in one checkout can work on a sibling checkout without changing its native folder. Start Jcode in the intended project if that distinction matters. No repository scanning, tool-output mining or arbitrary-session-name inference is performed.
 
@@ -127,11 +130,11 @@ Use the full session ID for the preview. Names are read again for each alert, in
 
 The line is single-line and redacted before shortening. Brief allows 2 words / 40 characters, contextual 5 / 80, expanded 8 / 120, within the existing whole-alert caps. A title is shortened first so the identifying suffix survives. Paths in titles remain redacted. Avoid confidential titles because this metadata is forwarded to your configured Telegram destination. This display change does not alter Clef's selection rules, cooldowns or explicit-attention delivery.
 
-**Privacy:** the folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
+**Privacy:** the legacy event folder line intentionally reveals bounded working-directory metadata to your configured Telegram destination. Generic updates show a project only when the caller explicitly supplies it. Home abbreviation is not anonymization. Credential-shaped values are still redacted there, and paths inside request/result text remain redacted. Preview first when folder names themselves are sensitive.
 
 ## Legacy event output links
 
-This section applies only to the deprecated Jcode event adapter. Generic attention accepts explicit `links[].url` values and uses the Inbox rewrite documented above.
+This section applies only to the deprecated Jcode event adapter. Generic attention and Clef-gated update candidates accept explicit `links[].url` values and use the Inbox rewrite documented above.
 
 Useful links in the current assistant output appear in a compact **🔗 Links** section. Both bare HTTPS URLs and ordinary Markdown links are supported. A GitHub pull request gets a clickable label such as **GitHub PR #42**. Other labels show the destination host and a bounded path, never an arbitrary Markdown label. Telegram preview cards are disabled.
 
@@ -140,6 +143,34 @@ Brief keeps up to one link, contextual two, and expanded three, within the exist
 Only conservative ASCII HTTPS destinations are accepted. Query strings, fragments, percent escapes, embedded credentials, IP/local targets, nonstandard ports and credential-shaped targets are omitted. Code fences and secret-redacted lines cannot contribute links. The helper does not fetch destinations, resolve DNS, follow redirects or check repository visibility. A normal-looking hostname or repository path is not proof that its content is public.
 
 **Privacy:** accepted link targets are intentionally sent to your configured Telegram destination, even though URLs remain redacted from ordinary request/result excerpts. Repository names and URL paths can themselves be sensitive. This is a forwarding feature, not a guarantee that a destination is safe or public. Preview first for confidential work.
+
+## Routine Clef-gated updates
+
+Submit a single concise candidate only when a material change is worth considering; do not narrate each tool call or ask a model to rewrite/summarize the update. The CLI sends a fixed YES/NO request to the configured versioned Clef resource. The caller's original sanitized `summary` is sent only on YES; NO is silent. Candidate text is untrusted data, not instructions. Clef receives only `summary`, optional `context`, and optional `project`; validated links are not relevance evidence and are not sent to the selector.
+
+```sh
+telegram-alerts update --key example/project:milestone:revision-42 <<'JSON'
+{
+  "summary": "The requested import flow now works; its verified limit is 20 MB.",
+  "context": "The owner asked for a verified size limit before the rollout decision.",
+  "project": "example/importer",
+  "links": [{"label": "Details", "url": "https://github.com/example/importer/pull/42"}]
+}
+JSON
+```
+
+`summary` is required (≤400 characters); `context` is optional gate-only background (≤3,000), `project` is optional explicit display context (≤120), and `links` has up to three exact `label`/`url` objects. Project is never inferred from the shell's working directory. The complete UTF-8 JSON input is bounded to 8,192 bytes and rejects duplicate/unknown keys. Keep detailed evidence in the authorized Plannotator Inbox or review page and pass its exact URL under `links`; do not put transcripts or private source in `context`. Inbox rewriting is described below and preserves the outgoing URL bytes.
+
+Configure Clef only in the selected generic home, with explicitly supplied endpoint/model and a private key file; no Jcode selector settings or key are inherited:
+
+```sh
+telegram-alerts clef status
+telegram-alerts clef configure --endpoint https://decision.example --key-file /secure/path/clef.key --model model-alias --expected-model response-model
+```
+
+The command stores configuration metadata only and does not infer or send. `clef status` reports whether the update route is actually ready and separately reports that explicit `attention` bypasses Clef. This branch ships an empty versioned-resource manifest pending owner vet, so ordinary updates currently return a structured `prompt_unavailable` suppression before contacting Clef or Telegram. Missing configuration/key/prompt, busy service, malformed response, or transport failure also fails closed. A NO, a selector failure, or a delivery ambiguity is not a Telegram delivery receipt; no automatic retry is made. Repeating the exact candidate is deduplicated after a decision attempt; changed content/context/project/links is a distinct candidate. Never change the key/content to retry an ambiguous send. The [prompt resource contract](docs/clef-prompt-resources.md) documents the package loader and owner-approval boundary.
+
+A mandatory review/authentication link bypasses routine relevance only when the user/workflow explicitly requests that handoff: invoke the explicit `attention` command below. Neither summary wording nor a link alone auto-classifies a candidate as required. Do not use `attention` as a routine-update fallback just because Clef is unavailable.
 
 ## Explicit attention when the owner is needed
 
@@ -158,9 +189,9 @@ JSON
 
 This is an illustrative shape, not a real pending request or a verified destination. The agent must supply the actual published revision and verify that the intended reviewer can access it. The command validates URL syntax offline; it does not fetch or prove publication, public visibility or authorization.
 
-The command requires no Jcode environment or session ID and displays the command's current working directory. A supplied `JCODE_SESSION_ID` is used only by configured legacy session filters; if an include list is active without a matching ID, delivery fails closed. Neither the ID nor a saved session name is displayed. Required text fields are `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Put URLs in `links`, not text fields. For a smaller necessary decision, the optional owner workflow presents a Plannotator question card; the alert carries its precise request, recommendation and verified link.
+The command requires no Jcode environment or session ID and displays no inferred project or invocation working directory. A supplied `JCODE_SESSION_ID` is used only by configured legacy compatibility filters; if an include list is active without a matching ID, delivery fails closed. Neither the ID nor a saved session name is displayed. Required compatibility text fields remain `context` (400 characters) and `needs_you` (800); `recommendation` (600) and `links` (up to three exact `label`/`url` objects, labels 80 characters) are optional. Input is one UTF-8 JSON object, at most 8192 bytes, without duplicate/unknown keys. Their values are forwarded as body text under the neutral `🔔 Update` heading, without mandatory `Needs you` or `Context` labels. Put URLs in `links`, not text fields. For a smaller necessary decision, the optional owner workflow presents a Plannotator question card; the explicit attention send carries its precise request, recommendation and verified link.
 
-Attention uses its own bounded layout, not the legacy event verbosity profiles. It rejects oversized messages rather than cutting a decision or link. It sends a fresh message with normal notification requested, bypassing routine duration thresholds, completion cooldowns and status-card edits. It respects a disabled Telegram profile and any configured session include/exclude filters, but never changes them. Telegram/phone mute settings can still prevent a visible or audible notification.
+Attention uses the same single neutral `🔔 Update` renderer as routine updates, not the legacy event verbosity profiles. It rejects oversized messages rather than cutting a decision or link. It sends a fresh message with normal notification requested, bypassing Clef relevance selection, routine duration thresholds, completion cooldowns and status-card edits. It respects a disabled Telegram profile and any configured compatibility session include/exclude filters, but never changes them. Telegram/phone mute settings can still prevent a visible or audible notification.
 
 The key identifies one decision at one reviewed revision. Reuse it across continuation turns; include the repository and revision so unrelated work does not collide. Already-acknowledged keys return `already_sent` without contacting Telegram. The same key remains deduplicated across sessions sharing the destination. Only when the owner explicitly asks for another copy, repeat the command with `--resend`. A changed decision or reviewed revision needs a new key. Private fingerprint-only history is bounded to 256 active keys and expires after 30 days; active capacity fails closed. No raw request, URL, key or transcript is saved in that state.
 
@@ -276,7 +307,7 @@ telegram-alerts-jcode preview --event error
 telegram-alerts-jcode preview --session YOUR_SESSION_ID --verbosity expanded
 ```
 
-`telegram-alerts-jcode preview` never sends. Without `--session`, it uses illustrative legacy event text. Saved-session previews are labeled as previews, with a placeholder duration rather than an inferred status. Lifecycle previews contain metadata only, never an earlier turn's prompt or result. Terminal previews show text and spacing; Telegram applies the native bold formatting. The generic `telegram-alerts preview` instead shows an agent-agnostic owner-handoff example, and generic `telegram-alerts test` deliberately sends that labeled example without reading native session state. A one-off adapter `--verbosity` override does not change the saved preference.
+`telegram-alerts-jcode preview` never sends. Without `--session`, it uses illustrative legacy event text. Saved-session previews are labeled as previews, with a placeholder duration rather than an inferred status. Lifecycle previews contain metadata only, never an earlier turn's prompt or result. Terminal previews show text and spacing; Telegram applies the native bold formatting. The generic `telegram-alerts preview` instead shows a neutral update example without live selection, and generic `telegram-alerts test` deliberately sends that labeled example without reading native session state. A one-off adapter `--verbosity` override does not change the saved preference.
 
 ## Legacy Jcode trigger rules
 

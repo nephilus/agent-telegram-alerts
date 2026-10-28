@@ -228,7 +228,7 @@ def setup():
     save_safety({"telegram_enabled": True, "telegram_bot_token": token,
                  "telegram_chat_id": chat, "telegram_reply_enabled": False})
     print("Linked and test delivered. Config and backup are owner-readable only (0600).")
-    print("Use telegram-alerts attention for generic owner handoffs. Legacy Jcode events are isolated in the optional telegram-alerts-jcode adapter.")
+    print("Use telegram-alerts update for routine candidates (only when an owner-vetted Clef prompt is configured); use attention only for an explicitly requested direct send. Legacy Jcode events are isolated in the optional telegram-alerts-jcode adapter.")
     print("Telegram credentials and alert state are private to this alerts home.")
 
 
@@ -241,13 +241,148 @@ def alert_secrets():
 
 
 def preview_message():
-    """Render a generic owner-handoff example without consulting session state."""
+    """Render one neutral, illustrative update without inference or session state."""
     import alert_attention
-    return alert_attention.render(
-        {"context": "Illustrative owner handoff; no task transcript is read.",
-         "needs_you": "No action is required; this is only a preview."},
-        {"TELEGRAM_ALERTS_CWD": "sample-project"}, config_path().parent,
+    return alert_attention.render_update(
+        {"summary": "A new capability is available; this is an illustrative preview.",
+         "project": "sample-project"}, {}, config_path().parent,
     )
+
+
+def _clef_status():
+    import alert_selector
+    result = alert_selector.status(config_path().parent)
+    if not result.get("configured"):
+        reason = "clef_unconfigured"
+    elif not result.get("prompt_available") or result.get("prompt_id") == alert_selector.LEGACY_PROMPT_ID:
+        reason = "prompt_unavailable"
+    elif not result.get("key_available"):
+        reason = "clef_key_unavailable"
+    else:
+        reason = None
+    result["routes"] = {
+        "update": "clef_gated" if reason is None else "fail_closed",
+        "update_reason": reason,
+        "attention": "explicit_direct_send_bypasses_clef",
+    }
+    return result
+
+
+def _update_receipt(state, reason, selector_status=None, **extra):
+    result = {"state": state, "reason": reason}
+    if selector_status is not None:
+        result["prompt_id"] = selector_status.get("prompt_id")
+        result["prompt_sha256"] = selector_status.get("prompt_hash")
+    result.update(extra)
+    return result
+
+
+def _update_command(args):
+    import alert_attention
+    import alert_selector
+    request = alert_attention.read_request(sys.stdin, kind="Update")
+    if not isinstance(args.key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@+\-]{0,199}", args.key):
+        raise SetupError("Update --key must be a stable candidate identifier of 1-200 ASCII characters.")
+    environment = {name: os.environ[name] for name in
+                   (alert_attention.INBOX_REGISTRY_ENV, alert_attention.INBOX_BASE_ENV)
+                   if name in os.environ}
+    rewrite_report = {"url_rewrites": [], "url_rewrite_warnings": []}
+    mapping = alert_attention._inbox_mapping(environment, request)
+    try:
+        candidate = alert_attention.prepare_update(
+            request, environment, config_path().parent, alert_secrets(),
+            inbox_mapping=mapping, rewrite_report=rewrite_report)
+    except alert_attention.AttentionError as error:
+        raise SetupError(str(error)) from None
+    try:
+        selector_status = _clef_status()
+    except (OSError, ValueError, TypeError, RecursionError):
+        print(json.dumps(_update_receipt("suppressed", "clef_configuration_invalid"), sort_keys=True))
+        return 1
+    if not selector_status.get("configured"):
+        print(json.dumps(_update_receipt("suppressed", "clef_unconfigured", selector_status), sort_keys=True))
+        return 1
+    if not selector_status.get("update_route_ready"):
+        reason = selector_status.get("routes", {}).get("update_reason") or "clef_unavailable"
+        print(json.dumps(_update_receipt("suppressed", reason, selector_status), sort_keys=True))
+        return 1
+    try:
+        token, chat = credentials()
+    except (SetupError, OSError, ValueError, TypeError):
+        print(json.dumps(_update_receipt("suppressed", "telegram_unconfigured", selector_status), sort_keys=True))
+        return 1
+    rewrite_report = {"url_rewrites": [], "url_rewrite_warnings": []}
+    try:
+        candidate = alert_attention.prepare_update(
+            request, environment, config_path().parent, (token, chat),
+            inbox_mapping=mapping, rewrite_report=rewrite_report)
+    except alert_attention.AttentionError as error:
+        raise SetupError(str(error)) from None
+    destination = hashlib.sha256((token + "\0" + chat).encode()).hexdigest()
+    candidate_key = hashlib.sha256((args.key + "\0" + json.dumps(
+        candidate, ensure_ascii=False, sort_keys=True, separators=(",", ":"))).encode("utf-8")).hexdigest()
+    delivery_key = "update:" + candidate_key
+    delivered = {}
+
+    def send(*, secrets=()):
+        def telegram(method, body):
+            try:
+                return api(token, method, {**body, "chat_id": chat})
+            except SetupError:
+                raise alert_attention.AttentionError(
+                    "Update delivery was not confirmed. It may have arrived; do not retry automatically."
+                ) from None
+        delivered["receipt"] = alert_attention.publish_update(
+            config_path().parent, environment, candidate, delivery_key, telegram,
+            destination, secrets=secrets)
+        return delivered["receipt"]
+
+    result = alert_selector.process_candidate(config_path().parent, candidate, args.key, send,
+                                              secrets=(token, chat))
+    selected = result.get("selector_choice")
+    selector_reason = result.get("selector_reason", "invalid")
+    extra = {"selector_choice": selected, "selector_reason": selector_reason}
+    if result.get("prompt_id") is not None:
+        extra["prompt_id"] = result["prompt_id"]
+    if result.get("prompt_hash") is not None:
+        extra["prompt_sha256"] = result["prompt_hash"]
+    if rewrite_report["url_rewrites"]:
+        extra["url_rewrites"] = rewrite_report["url_rewrites"]
+    if rewrite_report["url_rewrite_warnings"]:
+        extra["url_rewrite_warnings"] = rewrite_report["url_rewrite_warnings"]
+    delivery = delivered.get("receipt", {})
+    if delivery.get("url_rewrite_warnings"):
+        extra["url_rewrite_warnings"] = list(dict.fromkeys(
+            extra.get("url_rewrite_warnings", []) + delivery["url_rewrite_warnings"]))
+    if result.get("response_confirmed"):
+        extra["response_confirmed"] = True
+    if result.get("formatting_confirmed"):
+        extra["formatting_confirmed"] = True
+    if result.get("telegram_message_id") is not None:
+        extra["telegram_message_id"] = result["telegram_message_id"]
+    if selected == "no" and selector_reason == "selected":
+        output, code = _update_receipt("suppressed", "clef_no", selector_status, **extra), 0
+    elif selector_reason == "duplicate":
+        output, code = _update_receipt("suppressed", "duplicate_candidate", selector_status, **extra), 0
+    elif selected == "yes" and delivery.get("state") == "already_sent":
+        output, code = _update_receipt("already_sent", "delivery_deduplicated", selector_status, **extra), 0
+    elif selected == "yes" and result.get("state") == "sent" and result.get("response_confirmed"):
+        output, code = _update_receipt("sent", "clef_yes", selector_status, **extra), 0
+    elif selector_reason == "delivery_unconfirmed":
+        output, code = _update_receipt("delivery_unconfirmed", "delivery_ambiguous", selector_status, **extra), 1
+    else:
+        reasons = {
+            "unconfigured": "clef_unconfigured", "prompt_unavailable": "prompt_unavailable",
+            "key_unavailable": "clef_key_unavailable", "invalid_response": "invalid_decision",
+            "request_failed": "clef_unavailable", "busy": "clef_busy",
+            "capacity": "clef_capacity", "oversized": "candidate_too_large",
+            "invalid": "clef_invalid",
+        }
+        output = _update_receipt("suppressed", reasons.get(selector_reason, "clef_unavailable"),
+                                 selector_status, **extra)
+        code = 1
+    print(json.dumps(output, sort_keys=True))
+    return code
 
 
 def preview_text():
@@ -265,11 +400,15 @@ def main():
         raise argparse.ArgumentTypeError('review port must be an integer from 1024 through 65535')
 
     parser = argparse.ArgumentParser(prog="telegram-alerts", description=__doc__, epilog=(
-        "attention --key OWNER/REPO:DECISION:REVISION reads JSON from stdin: required context "
+        "update --key STABLE_ID reads JSON from stdin: required summary (400 chars), optional "
+        "gate-only context (3000), explicit project (120), and up to three validated links. "
+        "Ordinary updates are sent only after a configured, versioned Clef YES; NO and all "
+        "configuration/decision failures fail closed. No native session or summary model is used. "
+        "The versioned generic prompt remains unavailable until an owner-vetted resource is installed. "
+        "attention --key OWNER/REPO:DECISION:REVISION reads the compatibility JSON: required context "
         "(400 chars), needs_you (800); optional recommendation (600), links "
-        "(up to 3 label/url objects, labels 80 chars). No native session or hook is required. "
+        "(up to 3 label/url objects, labels 80 chars). This explicit command bypasses Clef. "
         "A legacy JCODE_SESSION_ID is consulted only by configured compatibility policy filters. "
-        "Sends a fresh message outside routine cooldowns; reuse the key for duplicates. "
         "Use --resend only for an explicit owner resend request. No automatic retries. "
         "Inbox links are rewritten only for the registry's exact loopback port, using tailscale.url; "
         "path, query and fragment are preserved. Configure TELEGRAM_ALERTS_INBOX_REGISTRY or "
@@ -287,20 +426,59 @@ def main():
         "Jcode lifecycle alerts and native session previews are available only through the separate, explicit telegram-alerts-jcode adapter."
     ))
     parser.add_argument("--version", action="version", version="%(prog)s " + version())
-    parser.add_argument("command", choices=("setup", "status", "test", "disable", "preview", "attention", "review-host"))
-    parser.add_argument("value", nargs="?", help="review-host HOST|off")
-    parser.add_argument("--key", help="attention: stable repository/decision/reviewed-revision identifier")
+    parser.add_argument("command", choices=("setup", "status", "test", "disable", "preview", "attention", "update", "clef", "review-host"))
+    parser.add_argument("value", nargs="?", help="clef status|configure, or review-host HOST|off")
+    parser.add_argument("--key", help="attention/update: stable request or candidate identifier")
     parser.add_argument("--resend", action="store_true", help="attention: send again only when the owner explicitly requests it")
     parser.add_argument("--review-port", type=review_port, help="attention only: declare exact trusted review port, 1024..65535")
+    parser.add_argument("--endpoint", help="clef configure: decision service HTTPS origin")
+    parser.add_argument("--key-file", help="clef configure: private decision API key file")
+    parser.add_argument("--model", help="clef configure: request model alias")
+    parser.add_argument("--expected-model", help="clef configure: required response model")
+    parser.add_argument("--prompt-resource", help="clef configure: owner-vetted versioned prompt resource ID")
     args = parser.parse_args()
-    if args.value is not None and args.command != "review-host":
-        parser.error("a positional value is only valid after review-host")
+    if args.command == "review-host":
+        pass
+    elif args.command == "clef":
+        if args.value not in ("status", "configure"):
+            parser.error("clef requires status or configure")
+        if args.value == "configure":
+            if not all((args.endpoint, args.key_file, args.model, args.expected_model)):
+                parser.error("clef configure requires --endpoint, --key-file, --model, and --expected-model")
+            if args.prompt_resource == "legacy-inline-v1":
+                parser.error("the legacy Jcode prompt cannot be activated for generic updates")
+        elif any(value is not None for value in (args.endpoint, args.key_file, args.model,
+                                                   args.expected_model, args.prompt_resource)):
+            parser.error("Clef settings are accepted only by clef configure")
+    elif args.value is not None:
+        parser.error("a positional value is only valid after clef or review-host")
     if args.review_port is not None and args.command != "attention":
         parser.error("--review-port requires attention")
-    if args.command != "attention" and (args.key is not None or args.resend):
-        parser.error("--key and --resend are only valid after attention")
+    if args.command not in ("attention", "update") and (args.key is not None or args.resend):
+        parser.error("--key and --resend require attention or update")
     if args.command == "attention" and not args.key:
         parser.error("attention requires --key")
+    if args.command == "update" and (not args.key or args.resend):
+        parser.error("update requires --key and does not support automatic resend")
+    if args.command != "clef" and any(value is not None for value in
+                                       (args.endpoint, args.key_file, args.model,
+                                        args.expected_model, args.prompt_resource)):
+        parser.error("Clef settings require clef configure")
+    if args.command == "clef":
+        import alert_selector
+        try:
+            if args.value == "status":
+                result = _clef_status()
+            else:
+                alert_selector.configure(
+                    config_path().parent, endpoint=args.endpoint, key_file=args.key_file,
+                    model=args.model, expected_model=args.expected_model,
+                    prompt_resource=args.prompt_resource)
+                result = _clef_status()
+        except (OSError, ValueError, TypeError, RecursionError):
+            raise SetupError("Clef configuration could not be read or updated safely.") from None
+        print(json.dumps(result, sort_keys=True))
+        return
     if args.command == "review-host":
         import alert_attention
         try:
@@ -310,6 +488,14 @@ def main():
             raise SetupError(str(error)) from None
         print(json.dumps(result, sort_keys=True))
         return
+    if args.command == "update":
+        try:
+            return _update_command(args)
+        except Exception as error:
+            import alert_attention
+            if isinstance(error, alert_attention.AttentionError):
+                raise SetupError(str(error)) from None
+            raise
     if args.command == "attention":
         import alert_attention
         try:
@@ -351,9 +537,13 @@ def main():
     elif args.command == "status":
         safety = load_config().get("safety", {})
         linked = bool(safety.get("telegram_enabled") and safety.get("telegram_bot_token") and safety.get("telegram_chat_id"))
+        selector_status = _clef_status()
         print("Telegram: " + ("configured locally (use 'test' to verify delivery)" if linked else "pending bot creation and private token entry"))
         print("Remote commands: disabled (not supported by this CLI)")
-        print("Owner handoffs: explicit attention command only; no native session or lifecycle hook is read")
+        print("Routine updates: " + ("Clef-gated" if selector_status.get("update_route_ready") else
+                                     "fail-closed (" + str(selector_status.get("routes", {}).get("update_reason")) + ")"))
+        print("Explicit attention: direct send bypasses Clef; it is never auto-classified")
+        print("Generic commands do not require a Jcode session; no native session or lifecycle hook is read")
     elif args.command == "test":
         token, chat = credentials()
         import alert_attention
@@ -369,8 +559,8 @@ def main():
 
 def cli():
     try:
-        main()
-        return 0
+        result = main()
+        return result if type(result) is int else 0
     except (SetupError, OSError, ValueError, TypeError, RecursionError) as error:
         # File/parser exceptions could contain config values, so only show our controlled messages.
         print(str(error) if isinstance(error, SetupError) else "Local config could not be read or updated safely.", file=sys.stderr)

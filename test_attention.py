@@ -127,10 +127,11 @@ class AttentionTests(unittest.TestCase):
         self.assertNotIn("Useful rollout name", message["text"])
         self.assertNotIn("🏷 Session:", message["text"])
         self.assertNotIn(self.environment["JCODE_SESSION_ID"], message["text"])
-        self.assertIn("sample-project", message["text"])
-        self.assertIn("Context:", message["text"])
-        self.assertIn("Needs you:", message["text"])
-        self.assertIn("Recommended:", message["text"])
+        self.assertNotIn("sample-project", message["text"])
+        self.assertNotIn("Context:", message["text"])
+        self.assertNotIn("Needs you:", message["text"])
+        self.assertNotIn("Recommended:", message["text"])
+        self.assertTrue(message["text"].startswith("🔔 Update\n\n"))
         raw = message["text"].encode("utf-16-le")
         labels = [raw[e["offset"] * 2:(e["offset"] + e["length"]) * 2].decode("utf-16-le")
                   for e in message["entities"] if e["type"] == "text_link"]
@@ -144,6 +145,8 @@ class AttentionTests(unittest.TestCase):
         self.assertNotIn("Recommended:", text)
         self.assertNotIn("Links:", text)
         self.assertNotIn("unavailable", text)
+        self.assertNotIn("Needs you:", text)
+        self.assertTrue(text.startswith("🔔 Update\n\n"))
 
     def test_invalid_records_and_required_links_fail_before_delivery(self):
         bad = [[], {}, {"context": "x", "needs_you": "y", "extra": "z"},

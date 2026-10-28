@@ -31,7 +31,7 @@ Keep the type lowercase and the subject on one line. Mark breaking changes with 
 Before requesting review:
 
 1. Run the tests and build a wheel/source archive.
-2. Install the wheel in a fresh virtual environment and exercise `telegram-alerts --help`, generic `preview`, and `attention --help` with a temporary `TELEGRAM_ALERTS_HOME`; verify that the thin `jcode-telegram` alias uses the same home and has no event/session commands.
+2. Install the wheel in a fresh virtual environment and exercise `telegram-alerts --help`, generic `preview`, `update --help`, `clef status`, and `attention --help` with a temporary `TELEGRAM_ALERTS_HOME`; confirm that the empty/unapproved prompt manifest keeps routine updates fail-closed and that no smoke command contacts Clef or Telegram. Verify the thin `jcode-telegram` alias uses the same home and has no event/session commands.
 3. If touching `telegram-alerts-jcode` or its deprecated hook adapter, exercise it only with an explicitly selected temporary home and confirm unrelated hooks/credentials remain intact.
 4. Scan the diff for secrets and personal paths. Use Gitleaks locally when available.
 5. Describe observed behavior, known limitations, and any integration check that could not be performed.
