@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import telegram_alerts as app
+import legacy_jcode as app
 
 
 class VerbosityTests(unittest.TestCase):

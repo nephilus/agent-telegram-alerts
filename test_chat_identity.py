@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 import alert_format as fmt
-import telegram_alerts as app
+import legacy_jcode as app
 from test_named_sessions import SESSION, event, saved
 from test_readability import bold_fragments
 

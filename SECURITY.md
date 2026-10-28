@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-During the initial 0.x series, security fixes target the latest released version only. The generic Telegram CLI/skill is best effort, with no availability or support SLA. The package also retains an optional, deprecated Jcode event adapter; that adapter is not required by the generic attention flow.
+During the initial 0.x series, security fixes target the latest released version only. The generic Telegram CLI/skill is best effort, with no availability or support SLA. The generic CLI and deprecated `jcode-telegram` alias do not read native sessions or dispatch Jcode lifecycle hooks. The separately invoked `telegram-alerts-jcode` adapter is optional, deprecated, and not required by generic attention.
 
 ## Report a vulnerability privately
 
@@ -12,7 +12,7 @@ If private reporting is unavailable, open a public issue requesting a private co
 
 ## Threat model and data flow
 
-The generic attention command intentionally transmits the caller's bounded `context`, `needs_you`, optional recommendation, and validated `links` to the selected Telegram destination. It is invoked from any agent or shell and does not depend on a Jcode session or hook. The optional legacy Jcode event adapter can additionally forward bounded public request/result excerpts when explicitly enabled. Anyone with access to the destination can read forwarded content; device notifications may reveal it on a lock screen.
+The generic attention command intentionally transmits the caller's bounded `context`, `needs_you`, optional recommendation, and validated `links` to the selected Telegram destination. It is invoked from any agent or shell and does not depend on a Jcode session or hook. Only the separate, explicitly invoked `telegram-alerts-jcode` adapter can forward bounded public request/result excerpts from native sessions. Anyone with access to the destination can read forwarded content; device notifications may reveal it on a lock screen.
 
 No incoming command server, webhook endpoint, remote shell, reply poller, or network listener is implemented here. New bot setup disables remote replies by default. The generic CLI does not modify Plannotator or start/stop its Inbox service. Telegram delivery is not an approval channel; use the reviewed Plannotator/GitHub route for decisions.
 
@@ -22,13 +22,13 @@ The helper:
 - Accepts bot tokens only through hidden interactive terminal input during setup.
 - Requires an exact challenge from a matching private user/chat before saving a new destination.
 - Tests delivery before enabling the native channel, and refuses to replace an existing webhook.
-- In legacy Jcode event mode, includes request context only after uniquely matching the current successful public response in the same saved session.
+- In the explicit legacy Jcode adapter, includes request context only after uniquely matching the current successful public response in the same saved session.
 - Legacy event formatting omits unbound prompt context on failure and prefers the current error over stale successful output.
 - Does not use reasoning, images, or tool-result blocks as request context.
 - Uses explicit UTF-16 bold and validated `text_link` entities rather than interpreting task text as HTML or Markdown.
 - Disables Telegram link previews and does not fetch or resolve output-link destinations.
 - Writes configuration/backups, preferences, policy state and receipts under the selected `TELEGRAM_ALERTS_HOME` with mode 0600. The default is `~/.config/telegram-alerts`.
-- Legacy lifecycle events do not reuse earlier request/response text for session-start, working or closure events.
+- The explicit adapter's lifecycle events do not reuse earlier request/response text for session-start, working or closure events.
 - Legacy editable status-card IDs are scoped to a hashed session and destination, so relinking does not edit an old destination.
 
 These controls do not defend against a compromised local user account, malicious replacements of installed code, a compromised Telegram account/bot, or hostile native Jcode components. Protect the installation directory and the parent directories of Jcode state. File-level symlink checks are not a substitute for an owner-controlled filesystem.
@@ -45,7 +45,7 @@ Checks in the notification are excerpts from the assistant response. They are no
 
 `TELEGRAM_ALERTS_HOME` selects the writable profile and defaults to `~/.config/telegram-alerts`; deprecated `JCODE_HOME` is honored only if the generic variable is unset. When the default generic home has no Telegram credentials/config, the CLI reads only Telegram safety fields from `~/.jcode/config.toml` in read-only compatibility mode and prints a notice. Legacy policy and attention-dedup files are also read-only fallbacks; all new writes stay in the selected generic home. No credentials or Jcode session data are copied. Do not upload configuration/backups or private receipts. Backups can contain live credentials.
 
-The Jcode hook installer is deprecated and requires an explicit home. When deliberately used, `telegram-alerts-hook uninstall` removes only manifest-owned hooks and preserves unrelated settings. It is not needed for generic attention. `telegram-alerts disable` disables only the selected Alerts profile; it does not change Jcode's native Telegram flags unless the operator explicitly selects a native home.
+The Jcode hook installer is deprecated and requires an explicit home; new managed hooks invoke only `telegram-alerts-jcode`, never the generic CLI or `jcode-telegram` alias. When deliberately used, `telegram-alerts-hook uninstall` removes only manifest-owned hooks and preserves unrelated settings. It is not needed for generic attention. `telegram-alerts disable` disables only the selected Alerts profile; it does not change Jcode's native Telegram flags unless the operator explicitly selects a native home.
 
 Policy/card state stores only one-way fingerprints, timestamps, counters and Telegram message IDs. Explicit session filters remain in the private policy file. Existing state is validated before it can select a card to edit. Protect the notifications directory against other local users. Neither cooldowns nor message editing provide guaranteed exactly-once delivery if Telegram accepts a request but the connection fails before acknowledgment, or the process crashes before local state is durable.
 

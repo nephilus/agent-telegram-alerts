@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import alert_format as fmt
 import telegram_alerts as app
+import legacy_jcode as legacy
 
 
 def event(**changes):
@@ -124,26 +125,26 @@ class ReadabilityTests(unittest.TestCase):
             self.assertIn("🏷 Session: chat-", values["text"])
             return {"message_id": 123, "text": values["text"], "entities": values["entities"]}
 
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "TELEGRAM_ALERTS_HOME": directory}), patch.object(app.sys, "argv", ["telegram-alerts", "alert"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", side_effect=acknowledge) as send:
-            app.main()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {**event(JCODE_HOOK_STATUS="error", JCODE_HOOK_ERROR="Current error"), "TELEGRAM_ALERTS_HOME": directory}), patch.object(app.sys, "argv", ["telegram-alerts-jcode", "event"]), patch.object(legacy, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(legacy, "api", side_effect=acknowledge) as send:
+            legacy.main()
             send.assert_called_once()
-            receipt = json.loads(app.receipt_path().read_text())
+            receipt = json.loads(legacy.receipt_path().read_text())
             self.assertEqual(receipt["state"], "sent")
             self.assertTrue(receipt["response_confirmed"])
             self.assertTrue(receipt["formatting_confirmed"])
             self.assertFalse(receipt["prompt_available"])
             self.assertEqual(receipt["bold_entities"], 3)
-            self.assertNotIn("Current error", app.receipt_path().read_text())
-            self.assertNotIn("SYNTHETIC_TOKEN", app.receipt_path().read_text())
+            self.assertNotIn("Current error", legacy.receipt_path().read_text())
+            self.assertNotIn("SYNTHETIC_TOKEN", legacy.receipt_path().read_text())
 
     def test_test_command_preserves_bold_entities_after_notice(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}), patch.object(app.sys, "argv", ["telegram-alerts", "test"]), patch.object(app, "credentials", return_value=("SYNTHETIC_TOKEN", "42")), patch.object(app, "api", return_value={}) as send, contextlib.redirect_stdout(io.StringIO()):
             app.main()
             payload = send.call_args.args[2]
-            self.assertTrue(payload["text"].startswith("Telegram verbosity preview (illustrative"))
+            self.assertTrue(payload["text"].startswith("Telegram Alerts test (illustrative"))
             self.assertNotIn("prompt_available", payload)
-            self.assertEqual(bold_fragments(payload), ["Jcode turn finished", "Asked:", "Result:", "Checked:", "Needs you:"])
-            self.assertFalse(app.receipt_path().exists())
+            self.assertEqual(bold_fragments(payload), ["Agent needs you", "Needs you:", "Context:"])
+            self.assertFalse(legacy.receipt_path().exists())
 
 
 if __name__ == "__main__":

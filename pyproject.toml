@@ -34,11 +34,12 @@ Changelog = "https://github.com/nephilus/agent-telegram-alerts/blob/main/CHANGEL
 [project.scripts]
 telegram-alerts = "telegram_alerts:cli"
 jcode-telegram = "telegram_alerts:legacy_cli"
+telegram-alerts-jcode = "legacy_jcode:cli"
 telegram-alerts-hook = "hook_install:cli"
 jcode-telegram-hook = "hook_install:cli"
 
 [tool.setuptools]
-py-modules = ["telegram_alerts", "alert_home", "alert_format", "alert_links", "alert_policy", "alert_attention", "alert_selector", "hook_install"]
+py-modules = ["telegram_alerts", "legacy_jcode", "alert_home", "alert_format", "alert_links", "alert_policy", "alert_attention", "alert_selector", "hook_install"]
 
 [tool.setuptools.data-files]
 "share/telegram-alerts/prompts" = ["prompts/owner-workflow.md"]

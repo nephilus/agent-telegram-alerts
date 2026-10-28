@@ -33,7 +33,7 @@ If an owner explicitly elects to retain the legacy adapter, the deprecated hook 
 
 ```sh
 "$HOME/.local/share/agent-telegram-alerts/venv/bin/telegram-alerts-hook" install \
-  --command "$HOME/.local/share/agent-telegram-alerts/venv/bin/telegram-alerts" \
+  --command "$HOME/.local/share/agent-telegram-alerts/venv/bin/telegram-alerts-jcode" \
   --events lifecycle
 ```
 
@@ -46,9 +46,9 @@ Jcode may cache hook paths in active sessions. Upgrade the runtime those paths a
 Use the actual executable invoked by the saved hook command, not a similarly named command from your interactive `PATH`:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/telegram-alerts --help
-/absolute/path/to/hook-runtime/bin/telegram-alerts selector
-/absolute/path/to/hook-runtime/bin/telegram-alerts policy
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode --help
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode selector
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode policy
 ```
 
 The help must expose `selector` and its selector options. `selector` must be recognized and return read-only state. `status` is not a feature probe, and the version comes from `version.txt`; check the exact source/runtime rather than assuming a version implies selector support. If the executable rejects `selector`, stop and update the exact legacy runtime before proceeding. A `preview` command can inspect ordinary formatting, but it does **not** exercise Clef selection or prove selector connectivity.
@@ -68,7 +68,7 @@ The file must be a regular file owned by the invoking user, mode `0600`, non-emp
 Run the following using the verified executable. Replace the example origin, key-file path, request alias, and exact response backend with the maintained deployment values. Do not put the key itself in this command.
 
 ```sh
-/absolute/path/to/hook-runtime/bin/telegram-alerts selector on \
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode selector on \
   --endpoint https://decision.example.ts.net:9105 \
   --key-file /absolute/private/decision.key \
   --model maintained-alias \
@@ -85,9 +85,9 @@ The selector is disabled until configured. Enabling it configures the selector a
 After configuration, check the selector and delivery policy without changing them:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/telegram-alerts selector
-/absolute/path/to/hook-runtime/bin/telegram-alerts policy
-/absolute/path/to/hook-runtime/bin/telegram-alerts preview
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode selector
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode policy
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode preview
 ```
 
 Read selector status as local readiness and collection counts, not proof of a live API call or Telegram delivery. It does not expose conversation text or credentials. The preview renders illustrative notification formatting only; it does not invoke Clef. Do not send test notifications merely to test classification.
@@ -111,7 +111,7 @@ Local PIR scheduling is specific to the deployment and is not built into this pa
 To stop ordinary completion updates while retaining errors, explicit attention, and the private selector evidence, run:
 
 ```sh
-/absolute/path/to/hook-runtime/bin/telegram-alerts selector off
+/absolute/path/to/hook-runtime/bin/telegram-alerts-jcode selector off
 ```
 
 This quiets completions. It deliberately does not restore an unfiltered completion stream. It also does not erase collected evidence, disable errors, or disable explicit attention. Confirm with read-only `selector` and `policy` queries. Do not delete evidence or alter unrelated hooks as part of rollback.

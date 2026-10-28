@@ -4,10 +4,10 @@
 
 | Check | What it demonstrates | What it does not demonstrate |
 | --- | --- | --- |
-| `python -m unittest discover -v` | Deterministic parser, redaction, Unicode, session-binding, configuration, CLI, and synthetic API behavior | Actual Telegram server acceptance or phone notification visibility |
+| `python -m unittest discover -v` | Deterministic parser, redaction, Unicode, configuration, generic-core isolation, explicit adapter, CLI, and synthetic API behavior | Actual Telegram server acceptance or phone notification visibility |
 | Build wheel and source archive | Distributable packaging from the public source | That an installed console command or hook runs correctly |
 | Install wheel in a fresh environment and invoke public commands | Real packaged imports, entrypoints, version, no-send previews, and hook registration/removal | Delivery to a real bot |
-| Hosted CI on Linux/macOS and supported Python versions | The same generic CLI/source/packaging workflows work on runner environments | Compatibility of the optional legacy event adapter with every Jcode release |
+| Hosted CI on Linux/macOS and supported Python versions | Generic CLI/source/packaging and opt-in adapter workflows work on runner environments | Compatibility of the optional legacy event adapter with every Jcode release |
 | Real generic `telegram-alerts attention` call with `JCODE_SESSION_ID` unset | Installed CLI accepts the request and Telegram returns the exact text/link formatting receipt | Phone notification visibility, user reading, or correctness of the assistant's task claims |
 
 ## Repeat the local package workflow
@@ -30,14 +30,15 @@ Use a fresh temporary `TELEGRAM_ALERTS_HOME`, then run the installed commands ra
 export TELEGRAM_ALERTS_HOME=/path/to/temporary-telegram-alerts-home
 /path/to/fresh-smoke-environment/bin/telegram-alerts --version
 /path/to/fresh-smoke-environment/bin/telegram-alerts preview
-/path/to/fresh-smoke-environment/bin/telegram-alerts verbosity brief
-/path/to/fresh-smoke-environment/bin/telegram-alerts preview
-/path/to/fresh-smoke-environment/bin/telegram-alerts preview --event turn_start
-/path/to/fresh-smoke-environment/bin/telegram-alerts policy
-/path/to/fresh-smoke-environment/bin/telegram-alerts policy activity --status-card on
-/path/to/fresh-smoke-environment/bin/telegram-alerts policy balanced --status-card off
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode preview
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode verbosity brief
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode preview
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode preview --event turn_start
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode policy
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode policy activity --status-card on
+/path/to/fresh-smoke-environment/bin/telegram-alerts-jcode policy balanced --status-card off
 /path/to/fresh-smoke-environment/bin/telegram-alerts-hook dedupe-moshi
-/path/to/fresh-smoke-environment/bin/telegram-alerts-hook install
+/path/to/fresh-smoke-environment/bin/telegram-alerts-hook install --command /path/to/fresh-smoke-environment/bin/telegram-alerts-jcode
 /path/to/fresh-smoke-environment/bin/telegram-alerts-hook status
 /path/to/fresh-smoke-environment/bin/telegram-alerts-hook uninstall
 ```
@@ -66,9 +67,9 @@ For `attention`, check the printed receipt has `state: sent`, `response_confirme
 
 For generic Inbox rewriting, pass one harmless `http://localhost:<registered-port>/` URL only in `links[].url`. Verify Telegram's response confirms the rewritten tailnet entity and the receipt reports only the source/destination origins, not a thread fragment. Synthetic tests cover suffix preservation and refusal to rewrite other loopback targets.
 
-For the deprecated legacy Jcode event adapter only, exercise the real installed hook with two actual turns in the same session. Verify the first completion is acknowledged and the second is `suppressed_cooldown`, with no new delivery. Test activity/card mode in a private isolated helper profile: lifecycle starts create one silent message and completion/closure use `editMessageText` on that message. Check matching message IDs privately, never publish them. Repeated-error suppression, malformed-state refusal and error/card-edit failure isolation also have deterministic fixture tests. Those tests alone do not establish live Telegram acceptance.
+For the explicitly installed, deprecated `telegram-alerts-jcode` adapter only, exercise the hook with two synthetic/actual turns in the same session. Verify the first completion is acknowledged and the second is `suppressed_cooldown`, with no new delivery. Test activity/card mode in a private isolated helper profile: lifecycle starts create one silent message and completion/closure use `editMessageText` on that message. Check matching message IDs privately, never publish them. Repeated-error suppression, malformed-state refusal and error/card-edit failure isolation also have deterministic fixture tests. Those tests alone do not establish live Telegram acceptance.
 
-Do not weaken global thresholds for a legacy adapter check. Native process-only `JCODE_HOOK_*` command overrides can select the installed helper with `--min-seconds 0` or an isolated private helper `TELEGRAM_ALERTS_HOME`. Keep credentials out of command arguments, logs and committed files, preserve the normal configuration, and do not start another polling loop. Observe detached hooks before interpreting receipts; event order and crash closure are not guaranteed.
+Do not weaken global thresholds for a legacy adapter check. Native process-only `JCODE_HOOK_*` inputs are consumed only by the explicit adapter; use an isolated private helper `TELEGRAM_ALERTS_HOME` for adapter checks. Keep credentials out of command arguments, logs and committed files, preserve the normal configuration, and do not start another polling loop. Observe detached hooks before interpreting receipts; event order and crash closure are not guaranteed.
 
 During the event-aware upgrade on October 17, 2026 (UTC), a fresh built wheel completed real Jcode streaming turns using private isolated helper policies and the configured Telegram destination. Two turns in one native session produced one acknowledged expanded completion, then `suppressed_cooldown` with a grouped count of one. A separate short turn in activity/card mode produced acknowledged session-start, turn-start, completion and session-end updates sharing one Telegram message ID. Working/completion/closure used edits, and returned text and bold entities matched. Native configuration and the saved expanded preference were byte-for-byte unchanged. These were real native processes and Telegram server responses, not a mock transport.
 
@@ -78,7 +79,7 @@ See the repository's actual [CI runs](https://github.com/nephilus/agent-telegram
 
 ## Explicit attention acceptance
 
-Use the actual installed `telegram-alerts attention --help` first. With a temporary `TELEGRAM_ALERTS_HOME`, verify malformed JSON, inline URLs, invalid explicit links, and an explicitly disabled profile all fail without delivery. Confirm the wheel includes `alert_attention`, the generic `telegram-alerts` entry point, and the `jcode-telegram` compatibility alias. The compatibility alias must forward to the same implementation and home resolver; no hook is needed for attention.
+Use the actual installed `telegram-alerts attention --help` first. With a temporary `TELEGRAM_ALERTS_HOME`, verify malformed JSON, inline URLs, invalid explicit links, and an explicitly disabled profile all fail without delivery. Confirm the wheel includes `alert_attention`, the generic `telegram-alerts` entry point, the thin generic `jcode-telegram` alias, and the separate `telegram-alerts-jcode` opt-in adapter. The alias forwards to the same generic implementation and home resolver; lifecycle hooks are not installed or invoked by generic CLI commands.
 
 With owner authorization, run exactly one real installed `telegram-alerts attention` command with `JCODE_SESSION_ID` unset. Clearly label its message as an acceptance test, not an actual outstanding approval. Include only a short context, `needs_you`, and an optional verified link in `links`. Do not put credentials or command payloads into public logs. Check the returned `state: sent`, `response_confirmed`, `formatting_confirmed`, and (when applicable) `url_rewrites`. The message is a fresh normal-notification send, and no automatic resend occurs. Global disable and configured session filters still apply.
 

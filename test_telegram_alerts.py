@@ -9,6 +9,7 @@ from unittest.mock import patch
 import urllib.error
 
 import telegram_alerts as app
+import legacy_jcode as legacy
 
 TOKEN = "123456:" + "a" * 35
 
@@ -107,22 +108,22 @@ class TelegramTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
                 os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
             event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "ok", "JCODE_HOOK_DURATION_MS": "29999"}
-            self.assertIsNone(app.alert_text(event))
+            self.assertIsNone(legacy.alert_text(event))
             event["JCODE_HOOK_DURATION_MS"] = "30000"
-            self.assertIn("finished", app.alert_text(event))
+            self.assertIn("finished", legacy.alert_text(event))
             event.update(JCODE_HOOK_STATUS="error", JCODE_HOOK_DURATION_MS="0")
-            self.assertIn("failed", app.alert_text(event))
+            self.assertIn("failed", legacy.alert_text(event))
             event["JCODE_HOOK_DURATION_MS"] = "bad"
-            self.assertIn("failed", app.alert_text(event))
+            self.assertIn("failed", legacy.alert_text(event))
 
     def test_no_sensitive_event_contents_are_forwarded(self):
         event = {"JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error", "JCODE_HOOK_DURATION_MS": "1000", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN, "JCODE_HOOK_ERROR": TOKEN, "JCODE_HOOK_CWD": "/private/path"}
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}):
-            result = app.alert_text(event)
+            result = legacy.alert_text(event)
             self.assertNotIn(TOKEN, result)
             self.assertIn("📁 /private/path", result)
             event["JCODE_HOOK_EVENT"] = "post_tool"
-            self.assertIsNone(app.alert_text(event))
+            self.assertIsNone(legacy.alert_text(event))
 
     def test_http_failure_never_exposes_token(self):
         error = urllib.error.HTTPError(f"https://api.telegram.org/bot{TOKEN}/getMe", 401, "Unauthorized", {}, None)
@@ -178,24 +179,24 @@ class TelegramTests(unittest.TestCase):
             save.assert_not_called()
 
     def test_missing_credentials_do_not_send_alert(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory, "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error"}), patch.object(app.sys, "argv", ["telegram-alerts", "alert"]), patch.object(app, "api") as send:
-            app.main()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory, "JCODE_HOOK_EVENT": "turn_end", "JCODE_HOOK_STATUS": "error"}), patch.object(app.sys, "argv", ["telegram-alerts-jcode", "event"]), patch.object(legacy, "api") as send:
+            legacy.main()
             send.assert_not_called()
-            receipt = json.loads(app.receipt_path().read_text())
+            receipt = json.loads(legacy.receipt_path().read_text())
             self.assertEqual(receipt["state"], "pending_setup")
-            self.assertEqual(app.receipt_path().stat().st_mode & 0o777, 0o600)
+            self.assertEqual(legacy.receipt_path().stat().st_mode & 0o777, 0o600)
 
     def test_receipt_does_not_store_raw_session_or_contents(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory, "JCODE_HOOK_SESSION_ID": "private-session-id", "JCODE_HOOK_LAST_ASSISTANT_TEXT": TOKEN}):
-            app.record_receipt("suppressed_short_or_unknown_turn")
-            text = app.receipt_path().read_text()
+            legacy.record_receipt("suppressed_short_or_unknown_turn")
+            text = legacy.receipt_path().read_text()
             self.assertNotIn("private-session-id", text)
             self.assertNotIn(TOKEN, text)
             self.assertEqual(len(json.loads(text)["session_fingerprint"]), 16)
 
     def test_receipt_failure_does_not_disrupt_hook(self):
         with patch.object(app, "private_write", side_effect=OSError("read only")):
-            app.record_receipt("pending_setup")
+            legacy.record_receipt("pending_setup")
 
 
 if __name__ == "__main__":

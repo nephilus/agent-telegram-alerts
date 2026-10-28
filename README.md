@@ -6,12 +6,12 @@
 
 **Generic Telegram delivery for agent notifications and owner handoffs.** Use `telegram-alerts attention` or the packaged `/telegram` skill from any agent or shell; neither requires a Jcode session, native CLI, or hook. Existing Jcode event-hook alerts remain an optional compatibility adapter.
 
-> The generic attention flow is independent of Jcode. A transitional `jcode-telegram` command alias remains for existing hooks, and the deprecated hook adapter is optional; neither is required for new owner handoffs. No remote-command server is added.
+> The generic CLI and `/telegram` skill do not read native sessions or install/invoke lifecycle hooks. `jcode-telegram` remains a thin deprecated alias for the same generic CLI; legacy event, selector, and saved-session preview behavior is isolated in the separately invoked `telegram-alerts-jcode` adapter. No remote-command server is added.
 
 ## What it does
 
 - Sends explicit owner handoffs immediately through the generic CLI and `/telegram` skill.
-- Optionally retains legacy Jcode lifecycle/completion alerts for existing registered hooks, with quiet routine activity, per-session cooldowns and repeated-error suppression.
+- Keeps the deprecated native-session lifecycle, selector, and event-policy features behind the separate, explicit `telegram-alerts-jcode` adapter; the generic CLI never dispatches `JCODE_HOOK_*` events.
 - Legacy event mode offers an optional editable session status card instead of a stream of routine messages.
 - Legacy event mode offers **brief**, **contextual**, and **expanded** profiles. Expanded is the default.
 - Uses bold headings, readable section spacing, useful emojis, and compact clickable output links.
@@ -55,9 +55,9 @@ telegram-alerts attention --help
 
 Alternatively, download the wheel and `SHA256SUMS` from a [GitHub release](https://github.com/nephilus/agent-telegram-alerts/releases), verify its checksum, and install the local wheel with `python -m pip install /path/to/package.whl`. No PyPI package is published by this repository's automation.
 
-Keep the virtual environment at its installed location. New generic installations do not register hooks. For transition compatibility, the wheel also installs `jcode-telegram`, an alias that invokes the same `telegram_alerts:legacy_cli` entry point, forwards `sys.argv` unchanged, and uses the same home resolution as `telegram-alerts`. An existing shell launcher can continue to `exec` the venv's `bin/jcode-telegram` with the original `"$@"`. The `telegram-alerts-hook`/`jcode-telegram-hook` adapter is deprecated and should not be used for new owner handoffs; it requires an explicit `TELEGRAM_ALERTS_HOME` (or deprecated `JCODE_HOME`) to manage a legacy Jcode config.
+Keep the virtual environment at its installed location. Generic installation never registers hooks. The wheel installs `jcode-telegram` only as a deprecated generic alias to `telegram-alerts`; it forwards the same arguments and uses the exact same home resolution. It does not support legacy `alert`, `event`, `selector`, or saved-session preview commands. Existing event hooks must be retired or deliberately reinstalled to call the separate `telegram-alerts-jcode` adapter. The `telegram-alerts-hook`/`jcode-telegram-hook` tools are deprecated, opt-in maintenance tools; they require an explicit `TELEGRAM_ALERTS_HOME` (or deprecated `JCODE_HOME`) and install only the explicit adapter command.
 
-The legacy hook installer remains only for deliberate maintenance of an existing Jcode integration. It does not install a requirement for `telegram-alerts attention`, and the generic package never rewrites an owner's native configuration by default. Existing hook commands can keep invoking the compatibility alias while those hooks are retired or updated. Never upload configuration backups, which can contain credentials.
+The legacy adapter and hook installer remain only for deliberate maintenance of an existing Jcode integration. They are not prerequisites for `telegram-alerts attention` and are never invoked by the generic CLI or skill. Generic package installation does not rewrite native configuration. Never upload configuration backups, which can contain credentials.
 
 ## Profile home and migration
 
@@ -81,9 +81,20 @@ For a new dedicated bot:
 
 Setup defaults remote replies to **disabled** and refuses to replace an existing webhook. Do not rerun it casually over an already-linked bot. No tunnel, inbound port, Telegram API application registration, or bot group-admin permission is required.
 
-## Legacy Jcode event integration (optional, deprecated)
+## Legacy Jcode event adapter (explicit opt-in, deprecated)
 
-The following event/formatting features apply only to existing Jcode hook integrations. They are not prerequisites for the generic `attention` command or `/telegram` skill, which neither require a Jcode session nor include a session label. `JCODE_HOOK_*` payload fields remain only as inputs from the external Jcode hook interface.
+The following event/formatting features are available only through `telegram-alerts-jcode`, a separate external adapter. The generic `telegram-alerts` CLI, its `jcode-telegram` alias, and `/telegram` skill neither read native Jcode sessions nor emit lifecycle alerts. Generic `alert`, `event`, `policy`, `selector`, and native-session preview commands are intentionally absent from that core CLI. `JCODE_HOOK_*` values are consumed only when the explicit adapter's `event` or `alert` command is invoked.
+
+The adapter is not installed into native configuration by default. For a fresh opt-in, select the native home and invoke the deprecated hook installer; it registers the separate adapter executable, not the generic alias:
+
+```sh
+TELEGRAM_ALERTS_HOME="$HOME/.jcode" telegram-alerts-hook install
+TELEGRAM_ALERTS_HOME="$HOME/.jcode" telegram-alerts-hook status
+```
+
+To retire the managed integration instead, run `TELEGRAM_ALERTS_HOME="$HOME/.jcode" telegram-alerts-hook uninstall`. If an existing managed registration points to the former `telegram-alerts` executable, inspect its ownership and uninstall it before reinstalling with the explicit adapter: the installer refuses to change an already-owned command in place. It removes only manifest-owned hooks and preserves foreign entries. Existing manual event hooks that call `jcode-telegram alert|event` must be removed or explicitly migrated to `telegram-alerts-jcode`; do not leave them pointed at the generic alias.
+
+The generic alias continues to use the same home resolution as `telegram-alerts`, including `TELEGRAM_ALERTS_HOME > JCODE_HOME > ~/.config/telegram-alerts`; it never loads native session data.
 
 ## Working folder, duration and request context
 
@@ -109,7 +120,7 @@ Rename through Jcode's normal interface or its native CLI, then preview without 
 
 ```sh
 jcode session rename snail "Storage migration"
-telegram-alerts preview --session SESSION_ID
+telegram-alerts-jcode preview --session SESSION_ID
 ```
 
 Use the full session ID for the preview. Names are read again for each alert, including native journal updates, so renaming or clearing a title needs no helper restart. Snapshot reads are bounded to 128 MiB and journals to 32 MiB. Unreadable, oversized or malformed metadata falls back to the short session-ID label rather than guessing a title.
@@ -172,10 +183,10 @@ No native Jcode patch, model, daemon, reply poller or automatic approval executi
 These profiles affect only optional legacy event messages; explicit attention uses its own bounded layout.
 
 ```sh
-telegram-alerts verbosity expanded
-telegram-alerts verbosity contextual
-telegram-alerts verbosity brief
-telegram-alerts verbosity
+telegram-alerts-jcode verbosity expanded
+telegram-alerts-jcode verbosity contextual
+telegram-alerts-jcode verbosity brief
+telegram-alerts-jcode verbosity
 ```
 
 | Profile | Whole-alert cap | Content |
@@ -192,13 +203,13 @@ Changing verbosity hot-reloads and preserves native credentials, reply settings,
 
 ## Legacy event notification policy
 
-This policy controls the optional legacy Jcode event adapter. Delivery policy is separate from verbosity. `telegram-alerts policy` queries it without changes. Add a preset name to select the enabled events:
+This policy controls the optional legacy Jcode event adapter. Delivery policy is separate from verbosity. `telegram-alerts-jcode policy` queries it without changes. Add a preset name to select the enabled events:
 
 ```sh
-telegram-alerts policy
-telegram-alerts policy balanced
-telegram-alerts policy attention
-telegram-alerts policy activity
+telegram-alerts-jcode policy
+telegram-alerts-jcode policy balanced
+telegram-alerts-jcode policy attention
+telegram-alerts-jcode policy activity
 ```
 
 | Preset | Enabled event kinds |
@@ -210,10 +221,10 @@ telegram-alerts policy activity
 Selecting a preset resets event on/off overrides, but preserves other policy settings. Routine lifecycle events are silent by default. Silent means without sound, not absent from the chat or notification tray.
 
 ```sh
-telegram-alerts policy balanced --cooldown-seconds 300 --error-repeat-seconds 300
-telegram-alerts policy --enable session_end --silent session_end
-telegram-alerts policy --disable completion
-telegram-alerts policy --audible error
+telegram-alerts-jcode policy balanced --cooldown-seconds 300 --error-repeat-seconds 300
+telegram-alerts-jcode policy --enable session_end --silent session_end
+telegram-alerts-jcode policy --disable completion
+telegram-alerts-jcode policy --audible error
 ```
 
 Without the optional selector, ordinary successful-turn messages must meet the hook duration threshold, 30 seconds by default. Within a session's completion cooldown, further qualifying completions are counted instead of sent. The next eligible completion includes a bounded `Grouped:` count. There is no background timer or delayed digest, so a suppressed final completion is not automatically sent later.
@@ -223,8 +234,8 @@ Distinct errors bypass the completion threshold and cooldown. Repeats of the sam
 ### Legacy status card
 
 ```sh
-telegram-alerts policy activity --status-card on
-telegram-alerts policy balanced --status-card off
+telegram-alerts-jcode policy activity --status-card on
+telegram-alerts-jcode policy balanced --status-card off
 ```
 
 Card mode creates a silent session message, then edits it for enabled lifecycle states. Enabled completions update the card even for short turns or within the ordinary message cooldown, so a working card can return to a finished state. Errors still create fresh attention messages, with a best-effort update of an existing card. A failed edit is not automatically retried or replaced by another routine message. Cards are scoped to a session and the configured destination. Changing destinations does not edit the old destination's card.
@@ -236,9 +247,9 @@ Card mode creates a silent session message, then edits it for enabled lifecycle 
 These filters apply to the external Jcode event adapter. On generic attention, a supplied JCODE_SESSION_ID is optional context for these filters only; no session name or ID is rendered.
 
 ```sh
-telegram-alerts policy --include-session YOUR_SESSION_ID
-telegram-alerts policy --exclude-session ANOTHER_SESSION_ID
-telegram-alerts policy --clear-session-filters
+telegram-alerts-jcode policy --include-session YOUR_SESSION_ID
+telegram-alerts-jcode policy --exclude-session ANOTHER_SESSION_ID
+telegram-alerts-jcode policy --clear-session-filters
 ```
 
 Repeated include/exclude options replace the corresponding list. Exclusion wins. Without the optional selector, there is no automatic root/worker detection. The hook payload has no reliable worker identity, and saved parent IDs also include user-created forks. The selector uses saved metadata conservatively: parented sessions are excluded unless their exact ID is explicitly included. Unavailable context is not guessed.
@@ -251,22 +262,21 @@ The [legacy Jcode selector runbook](docs/plans/2026-10-24-clef-selector-setup.md
 
 Clef answers one typed YES/NO question for a uniquely matched successful owner-root turn. A YES sends the sanitized original public reply and independently validated original links, bypassing the usual completion duration threshold and cooldown. A NO stays quiet. Known child/automated turns and stale or ambiguous source are excluded. Errors and explicit `attention` are not gated by Clef.
 
-This opt-in mode sends bounded sanitized context to the configured decision service and retains private content for up to 100 eligible turns for review. There is no Qwen rewrite, cloud fallback, automatic retry or unfiltered fallback when selection fails. Read-only `telegram-alerts selector` reports counts, not proof of delivery or usefulness. `telegram-alerts selector off` returns to **quiet completions**, preserving errors, explicit attention and collected evidence. See the [rollout observations and limits](docs/plans/2026-10-24-clef-live-rollout.md).
+This opt-in mode sends bounded sanitized context to the configured decision service and retains private content for up to 100 eligible turns for review. There is no Qwen rewrite, cloud fallback, automatic retry or unfiltered fallback when selection fails. Read-only `telegram-alerts-jcode selector` reports counts, not proof of delivery or usefulness. `telegram-alerts-jcode selector off` returns to **quiet completions**, preserving errors, explicit attention and collected evidence. See the [rollout observations and limits](docs/plans/2026-10-24-clef-live-rollout.md).
 
 ### Preview and test
 
 These commands preview or deliberately send legacy event-format examples; they are not required for generic owner handoffs. `telegram-alerts attention --help` documents the generic request schema without sending.
 
 ```sh
-telegram-alerts preview
-telegram-alerts preview --verbosity brief
-telegram-alerts preview --event turn_start
-telegram-alerts preview --event error
-telegram-alerts preview --session YOUR_SESSION_ID --verbosity expanded
-telegram-alerts test --verbosity expanded
+telegram-alerts-jcode preview
+telegram-alerts-jcode preview --verbosity brief
+telegram-alerts-jcode preview --event turn_start
+telegram-alerts-jcode preview --event error
+telegram-alerts-jcode preview --session YOUR_SESSION_ID --verbosity expanded
 ```
 
-`preview` never sends. Without `--session`, it uses illustrative sample text. Saved-session previews are labeled as previews, with a placeholder duration rather than an inferred status. Lifecycle previews contain metadata only, never an earlier turn's prompt or result. Terminal previews show text and spacing; Telegram applies the native bold formatting. `test` deliberately sends a labeled illustrative preview, bypassing the delivery policy. Its explanatory prefix is outside the rendered profile cap. A one-off `--verbosity` override does not change the saved preference.
+`telegram-alerts-jcode preview` never sends. Without `--session`, it uses illustrative legacy event text. Saved-session previews are labeled as previews, with a placeholder duration rather than an inferred status. Lifecycle previews contain metadata only, never an earlier turn's prompt or result. Terminal previews show text and spacing; Telegram applies the native bold formatting. The generic `telegram-alerts preview` instead shows an agent-agnostic owner-handoff example, and generic `telegram-alerts test` deliberately sends that labeled example without reading native session state. A one-off adapter `--verbosity` override does not change the saved preference.
 
 ## Legacy Jcode trigger rules
 
@@ -277,7 +287,7 @@ telegram-alerts test --verbosity expanded
 - Jcode's desktop notification thresholds do not throttle this extension.
 - Delivery is best effort, with a network timeout and no automatic retry.
 - Normal session closure is not a crash or task-success signal. There are no invented needs-input, cancellation or crash events. Native ambient permission/summary notifications remain a separate Jcode route; this extension does not duplicate them.
-- `alert` remains a compatibility alias for event dispatch. New managed hooks use the `event` command.
+- `telegram-alerts-jcode alert` remains an alias for event dispatch within the explicit adapter. New managed hooks use `telegram-alerts-jcode event`; generic `jcode-telegram alert|event` is no longer supported.
 
 This project was developed against **Jcode v0.98.1**. In that version, a real `jcode run --json` bypassed the turn hook while `--ndjson` invoked it. Use `--ndjson` for scripted notifications. This extension does not patch Jcode itself. Recheck behavior when upgrading Jcode.
 
@@ -285,7 +295,7 @@ This project was developed against **Jcode v0.98.1**. In that version, a real `j
 
 **Task/result excerpts are intentionally sent to your configured Telegram destination.** Use a private bot you trust. Read [SECURITY.md](SECURITY.md) before enabling this for sensitive work.
 
-Ordinary excerpt formatting reads public text from only the matching saved session, up to 8 MiB. It requires a unique corresponding assistant response before including the request. Missing/ambiguous context is unavailable. Failed turns omit unbound prompt context and use the current error rather than a stale successful response. Reasoning, images, and shell/tool results are not exported as request context.
+Only the explicit legacy adapter's excerpt formatting reads public text from a matching saved session. It requires a unique corresponding assistant response before including the request. Missing/ambiguous context is unavailable. Failed turns omit unbound prompt context and use the current error rather than a stale successful response. Reasoning, images, and shell/tool results are not exported as request context. The generic CLI and skill do not perform these reads.
 
 The optional selector separately reads a bounded native snapshot and journal to recover the complete public final behind the hook excerpt. It sends bounded sanitized task context, the current final and a previous public final to the configured Clef service. Its private `telegram-selector-state.json` retains those inputs and allowed original links for the configured sample, unlike the fingerprint-only routine receipts below. Protect this file and do not publish it. Full limits and the distinction between selection, delivery and human usefulness are in the [selector runbook](docs/plans/2026-10-24-clef-selector-setup.md).
 
@@ -293,7 +303,7 @@ Code fences, paths within request/result text, URLs, email addresses, common cre
 
 Tokens, configuration/backups, preferences, and diagnostic receipts stay outside this repository. Config/backups and helper state files are written with mode 0600. Backups can contain credentials. Never upload them to issues, pull requests, or build artifacts.
 
-The latest receipt at `~/.config/telegram-alerts/notifications/telegram-last-alert.json` stores state, timestamps, one-way fingerprints, profile/length metadata, and optional server text/bold acknowledgment. It does not store raw message text, bot token, destination, or raw session ID. Later turns can overwrite it. Server acknowledgment does not prove phone notification visibility or that a message was read.
+When the explicit adapter runs, its latest receipt at the selected home (`notifications/telegram-last-alert.json`) stores state, timestamps, one-way fingerprints, profile/length metadata, and optional server text/bold acknowledgment. It does not store raw message text, bot token, destination, or raw session ID. Later turns can overwrite it. The generic CLI does not read this legacy event receipt. Server acknowledgment does not prove phone notification visibility or that a message was read.
 
 Policy suppression/card state is stored separately in `~/.config/telegram-alerts/notifications/telegram-policy-state.json`. It contains hashed session/destination keys, counters, timestamps, error fingerprints and card message IDs, not message contents. Explicit session filters are intentionally stored in the private policy file. Protect both files and their parent directory.
 
@@ -309,7 +319,7 @@ The helper removes only exact repeated `moshi-hook jcode-hook` command strings f
 
 ## Update and remove
 
-Before upgrading, check the release notes and install a chosen tag or verified release wheel into the same generic Alerts environment. New installations do not register Jcode hooks. Existing registrations can continue calling the `jcode-telegram` compatibility alias while their owner migrates them; the alias forwards arguments unchanged to the same CLI and uses the same home resolver. The legacy `telegram-alerts-hook` installer requires an explicit home and is not recommended for new workflows.
+Before upgrading, check the release notes and install a chosen tag or verified release wheel into the same generic Alerts environment. New installations do not register Jcode hooks. The `jcode-telegram` alias now accepts only the generic CLI, so old lifecycle registrations that call it must be removed or deliberately reinstalled through `telegram-alerts-hook` to invoke `telegram-alerts-jcode`. The alias still uses the same home resolver. The hook installer requires an explicit home and is not recommended for new workflows.
 
 ```sh
 telegram-alerts --version
