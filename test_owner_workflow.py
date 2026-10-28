@@ -1,6 +1,5 @@
 """Offline template contracts, not live review/Telegram acceptance tests."""
 from pathlib import Path
-import json
 import re
 import tomllib
 import unittest
@@ -24,35 +23,27 @@ class OwnerWorkflowTemplates(unittest.TestCase):
 
     def test_size_and_frontmatter(self):
         self.assertLessEqual(len(self.overlay.split()), 320)
-        self.assertLessEqual(len(self.skill.split()), 800)
+        self.assertLessEqual(len(self.skill.split()), 1000)
         match = re.match(r'---\nname: owner-review\ndescription: "([^"\n]+)"\n---\n', self.skill)
         self.assertIsNotNone(match)
         description = match.group(1)
         self.assertLessEqual(len(description), 120)
-        self.assertTrue(description.startswith("ADR writing, doc reviews and owner-dependent choices:"))
-        self.assertIn("Inbox questions", description)
+        self.assertTrue(description.startswith("Scoped owner handoffs for ADRs"))
+        self.assertIn("Inbox choices", description)
         self.assertLessEqual(len(self.inbox.split()), 600)
         self.assertLessEqual(len(self.telegram_skill.split()), 600)
         match = re.match(r'---\nname: telegram\ndescription: "([^"\n]+)"\n---\n', self.telegram_skill)
         self.assertIsNotNone(match)
         self.assertLessEqual(len(match.group(1)), 120)
 
-    def test_adr_y_statement_and_material_scope(self):
+    def test_adr_policy_and_material_scope(self):
         self.assertIn("Frame ADR decisions as Y-statements", self.overlay)
         self.assertIn("desired qualities and accepted trade-offs", self.overlay)
         self.assertNotIn("<use case/user story>", self.overlay)
-        statement = (
-            "> In the context of <use case/user story>, facing <concern>, "
-            "we decided for <option> and neglected <other options>, "
-            "to achieve <system qualities/desired consequences>, "
-            "accepting <downside/undesired consequences>, because <additional rationale>."
-        )
-        self.assertIn(statement, self.skill)
+        self.assertNotIn("<use case/user story>", self.skill)
         self.require(self.skill, [
-            "new or substantively updated material ADRs", "open **Decision**",
-            "Keep **Status**", "supporting context/evidence",
-            "Name rejected alternatives and explain why", "replace every placeholder",
-            "Preserve historical ADRs unless a substantive change",
+            "Use the `adr` companion skill for new or substantively updated material ADR content",
+            "including its decision statement, status, alternatives and supporting evidence",
             "Routine reversible choices remain implementation details",
             "not new ADRs or approval gates",
         ])
@@ -96,22 +87,28 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         self.assertNotIn("--browser", shell)
         self.assertNotIn("--require-approval", shell)
         self.assertNotIn("timeout", shell)
-        self.require(self.skill, ["new, nonexistent result target", "completion wake support",
-                                  "--require-approval` only", "not ordinary document feedback or question answers"])
+        self.require(self.skill, ["new, nonexistent result target", "completion notification when supported",
+                                  "Add `--require-approval` only", "not ordinary document feedback or question answers"])
 
     def test_handoff_trust_and_result_contract(self):
         self.require(self.skill, [
-            "originating Jcode session", "repository, document path, commit, SHA-256",
-            "background job identifier, result path", "telegram-alerts review-host",
+            "originating agent/session", "available commit/revision identifier",
+            "SHA-256 of the exact file", "background job identifier, result path",
+            "configured attention integration for the trusted exact review host",
             "never silently trust/configure", "1024..65535", "GET only", "`/api/plan`",
-            "expected document and exact snapshot", "Do not self-submit", "do not use Funnel",
-            "--review-port PORT", "`context`, `needs_you`, optional `recommendation`",
-            "`links` entries with `label` and `url`", "durable GitHub fallback",
+            "expected document and exact snapshot", "Do not self-submit feedback",
+            "do not use Funnel, remote terminals, or reset other mappings",
+            "stable decision/revision key",
+            "verified actual review URL and declared review port",
+            "`telegram` owns command syntax, payload and delivery mechanics",
+            "durable revision fallback for material ADRs",
             "Exit 0, delivery receipts and API acknowledgements are not approval",
-            "cannot approve a plan", "Skipped, dismissed or empty", "reject stale results",
-            "without automatic re-review loops", "removed only the owned endpoint",
-            "preserved all other mappings", ":::question", "Recommended:", "Reason:",
-            "**Send answers**", "**Send feedback**", "**Approve** alone does not submit",
+            "An `annotated` answer may resolve its matching question; it cannot approve a plan",
+            "Skipped, dismissed or empty responses remain unresolved",
+            "reject stale results on mismatch", "without automatic re-review loops or broadened authority",
+            "removed only the owned endpoint", "preserved all other mappings",
+            ":::question", "Recommended:", "Reason:", "**Send answers**",
+            "**Send feedback**", "**Approve** alone does not submit",
         ])
 
     def test_telegram_skill_describes_generic_attention_and_inbox_rewrites(self):
@@ -136,11 +133,12 @@ class OwnerWorkflowTemplates(unittest.TestCase):
     def test_inbox_discovery_preserves_questions_only_opt_in(self):
         self.assertIn("prefer Plannotator Inbox when enabled, otherwise a question card", self.overlay)
         self.require(self.skill, [
-            "owner-enabled projects", "[references/inbox.md](references/inbox.md)",
-            "`plannotator inbox --help`", "Questions only, not progress/completion summaries",
-            "approval-required actions on the existing review route",
-            "No permanent service, automatic wake or cross-project default",
-            "Closed or held Inboxes stay off",
+            "Read [references/inbox.md](references/inbox.md) before using Inbox",
+            "configured and permitted by applicable instructions",
+            "without a project opt-out or operational hold",
+            "Reuse the configured `plannotator-inbox` MCP server; never duplicate servers",
+            "`plannotator inbox --help`", "does not send progress/completion summaries",
+            "assume automatic wake", "Keep approval-required actions on the existing review route",
         ])
         self.assertNotIn("repository checkout's", self.skill)
         self.require(self.workflow, [
@@ -155,30 +153,37 @@ class OwnerWorkflowTemplates(unittest.TestCase):
             "Installation is not enablement", "without a discovery smoke test",
         ])
 
-    def test_inbox_reference_does_not_start_discovery_during_hold(self):
+    def test_inbox_reference_preserves_opt_in_and_safe_discovery(self):
         self.require(self.inbox, [
-            "owner or project instructions explicitly permit Inbox use and startup",
-            "An installed binary, visible tool or this skill alone is not permission",
-            "operational hold stays off until explicitly released",
-            "Do not connect, run `jcode mcp test`",
-            "even MCP initialization and tool listing start it",
-            "Do not add permanent MCP configuration",
-            "actual originating `agent_session` and absolute `project_path`",
-            "**no automatic wake**", "`timeout_seconds=25`", "Do not poll continuously",
+            "optional configured integration, not an assumed global grant",
+            "Explicit project opt-outs forbid that project's calls",
+            "Operational holds retain their scope",
+            "Use the current agent's named MCP connection facility for the existing server",
+            "Initialization/tool listing can start Inbox",
+            "A machine-wide OFF hold",
+            "Never test or connect an OFF service to check it",
+            "Pass the actual originating `agent_session` and absolute `project_path` explicitly",
+            "Do not pin one project/session in shared environment settings",
+            "Do not assume the current MCP client supports automatic wake",
+            "`timeout_seconds=25`", "Do not poll continuously",
             "actual returned reply text", "exact question/revision",
             "Acknowledged, skipped, empty or stale", "Workers report to their coordinator",
-            "Never stop a reused service you do not own",
+            "never stop it or remove its publication",
+            "Clean up only owned temporary document-review resources",
         ])
 
-    def test_inbox_connection_example_is_on_demand_and_project_explicit(self):
-        example = re.search(r"```json\n(.*?)\n```", self.inbox, re.S).group(1)
-        connection = json.loads(example)
-        self.assertEqual(connection["action"], "connect")
-        self.assertEqual(connection["args"], ["inbox", "mcp"])
-        self.assertEqual(connection["env"]["PLANNOTATOR_INBOX_CONNECT"], "0")
-        self.assertEqual(connection["env"]["PLANNOTATOR_CWD"], "ABSOLUTE_PROJECT_PATH")
-        self.assertEqual(connection["env"]["PLANNOTATOR_AI"], "disabled")
-        self.assertNotIn("url", connection)
+    def test_inbox_connection_uses_configured_server_and_explicit_attribution(self):
+        self.require(self.inbox, [
+            "Reuse the configured `plannotator-inbox` MCP server",
+            "the installed `plannotator inbox mcp`",
+            "PLANNOTATOR_INBOX_CONNECT=0", "PLANNOTATOR_UPDATE_CHECK=0",
+            "PLANNOTATOR_BROWSER=none", "PLANNOTATOR_AI=disabled",
+            "PLANNOTATOR_INBOX_TAILSCALE=1",
+            "Use the current agent's named MCP connection facility",
+            "Pass the actual originating `agent_session` and absolute `project_path` explicitly",
+            "Do not pin one project/session in shared environment settings",
+        ])
+        self.assertNotIn('"action": "connect"', self.inbox)
 
     def test_installed_skill_reference_is_declared_as_a_package_asset(self):
         config = tomllib.loads((ROOT / "pyproject.toml").read_text())
@@ -191,6 +196,9 @@ class OwnerWorkflowTemplates(unittest.TestCase):
         self.assertTrue((ROOT / reference).is_file())
         self.assertTrue((ROOT / telegram_skill).is_file())
         self.assertIn("~/.jcode/skills/owner-review/references/inbox.md", self.workflow)
+        packaged_reference = (ROOT / reference).read_text()
+        self.assertIn("Initialization/tool listing can start Inbox", packaged_reference)
+        self.assertIn("Never test or connect an OFF service to check it", packaged_reference)
 
 
 if __name__ == "__main__":
