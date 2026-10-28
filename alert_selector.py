@@ -220,8 +220,8 @@ def _state(value):
         if 'delivery' in record:
             _require(_metadata(record['delivery']) == record['delivery'])
         if 'reason' in record:
-            _require(record['reason'] in ('selected', 'delivery_unconfirmed', 'request_failed',
-                                          'invalid_response', 'key_unavailable', 'oversized', 'busy'))
+            _require(record['reason'] in ('selected', 'delivery_unconfirmed', 'delivery_not_attempted',
+                                          'request_failed', 'invalid_response', 'key_unavailable', 'oversized', 'busy'))
     totals = value['totals']
     _require(isinstance(totals, dict) and set(totals) == set(_empty()['totals'])
              and all(type(n) is int and 0 <= n <= 2**53 for n in totals.values())
@@ -535,7 +535,9 @@ def process(home, turn, deliver, *, secrets=(), request=None, retain_input=True,
                                         receipt['state'] = 'delivery_failed'
                                     finally:
                                         delivery_seconds = max(0.0, time.monotonic() - began)
-                                    if receipt['state'] == 'sent' and not receipt['response_confirmed']:
+                                    if receipt['state'] == 'delivery_not_attempted':
+                                        reason = 'delivery_not_attempted'
+                                    elif receipt['state'] == 'sent' and not receipt['response_confirmed']:
                                         reason = 'delivery_unconfirmed'
                                     elif receipt['state'] not in ('sent', 'already_sent'):
                                         reason = 'delivery_unconfirmed'

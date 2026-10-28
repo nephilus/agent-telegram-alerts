@@ -211,6 +211,23 @@ class GenericUpdateTests(unittest.TestCase):
         self.assertEqual(len(attempts), 1)
         self.assertFalse((self.home / "notifications" / attention.STATE_FILE).exists())
 
+    def test_pre_send_failure_is_not_reported_as_ambiguous_or_retried(self):
+        with patch.object(attention, "render_update",
+                          side_effect=attention.AttentionError("PRIVATE_RENDER_FAILURE")):
+            code, output, errors = self.run_cli()
+        first = json.loads(output)
+        self.assertEqual((code, first["state"], first["reason"]),
+                         (1, "suppressed", "delivery_failed_before_send"))
+        self.assertEqual(first["selector_reason"], "delivery_not_attempted")
+        self.assertNotIn("PRIVATE_RENDER_FAILURE", output + errors)
+        self.assertEqual(self.telegram, [])
+        self.assertEqual(len(self.requests), 1)
+        code, output, _ = self.run_cli()
+        second = json.loads(output)
+        self.assertEqual((code, second["state"], second["reason"]),
+                         (0, "suppressed", "duplicate_candidate"))
+        self.assertEqual(self.telegram, [])
+
     def test_missing_config_prompt_or_key_are_reported_without_transport(self):
         with patch.object(selector, "load_prompt_resource", side_effect=fixture_resource):
             selector.configure(self.home, endpoint="https://clef.example.invalid", key_file=self.key,

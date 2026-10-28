@@ -322,19 +322,25 @@ def _update_command(args):
     candidate_key = hashlib.sha256((args.key + "\0" + json.dumps(
         candidate, ensure_ascii=False, sort_keys=True, separators=(",", ":"))).encode("utf-8")).hexdigest()
     delivery_key = "update:" + candidate_key
-    delivered = {}
+    delivered = {"attempted": False}
 
     def send(*, secrets=()):
         def telegram(method, body):
+            delivered["attempted"] = True
             try:
                 return api(token, method, {**body, "chat_id": chat})
             except SetupError:
                 raise alert_attention.AttentionError(
                     "Update delivery was not confirmed. It may have arrived; do not retry automatically."
                 ) from None
-        delivered["receipt"] = alert_attention.publish_update(
-            config_path().parent, environment, candidate, delivery_key, telegram,
-            destination, secrets=secrets)
+        try:
+            delivered["receipt"] = alert_attention.publish_update(
+                config_path().parent, environment, candidate, delivery_key, telegram,
+                destination, secrets=secrets)
+        except Exception:
+            if delivered["attempted"]:
+                raise
+            delivered["receipt"] = {"state": "delivery_not_attempted"}
         return delivered["receipt"]
 
     result = alert_selector.process_candidate(config_path().parent, candidate, args.key, send,
@@ -368,6 +374,8 @@ def _update_command(args):
         output, code = _update_receipt("already_sent", "delivery_deduplicated", selector_status, **extra), 0
     elif selected == "yes" and result.get("state") == "sent" and result.get("response_confirmed"):
         output, code = _update_receipt("sent", "clef_yes", selector_status, **extra), 0
+    elif selector_reason == "delivery_not_attempted":
+        output, code = _update_receipt("suppressed", "delivery_failed_before_send", selector_status, **extra), 1
     elif selector_reason == "delivery_unconfirmed":
         output, code = _update_receipt("delivery_unconfirmed", "delivery_ambiguous", selector_status, **extra), 1
     else:
@@ -537,11 +545,15 @@ def main():
     elif args.command == "status":
         safety = load_config().get("safety", {})
         linked = bool(safety.get("telegram_enabled") and safety.get("telegram_bot_token") and safety.get("telegram_chat_id"))
-        selector_status = _clef_status()
         print("Telegram: " + ("configured locally (use 'test' to verify delivery)" if linked else "pending bot creation and private token entry"))
         print("Remote commands: disabled (not supported by this CLI)")
-        print("Routine updates: " + ("Clef-gated" if selector_status.get("update_route_ready") else
-                                     "fail-closed (" + str(selector_status.get("routes", {}).get("update_reason")) + ")"))
+        try:
+            selector_status = _clef_status()
+            update_status = ("Clef-gated" if selector_status.get("update_route_ready") else
+                             "fail-closed (" + str(selector_status.get("routes", {}).get("update_reason")) + ")")
+        except (OSError, ValueError, TypeError, RecursionError):
+            update_status = "fail-closed (clef_configuration_invalid)"
+        print("Routine updates: " + update_status)
         print("Explicit attention: direct send bypasses Clef; it is never auto-classified")
         print("Generic commands do not require a Jcode session; no native session or lifecycle hook is read")
     elif args.command == "test":
