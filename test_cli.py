@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import telegram_alerts as app
+import alert_selector as selector
 import legacy_jcode as legacy
 
 
@@ -106,6 +107,25 @@ class ConsoleTests(unittest.TestCase):
             self.assertNotIn("none recorded yet", result.stdout)
             self.assertNotIn("PRIVATE_DIAGNOSTIC_VALUE", result.stdout + result.stderr)
             self.assertEqual(receipt.read_text(), '["PRIVATE_DIAGNOSTIC_VALUE"]')
+
+    def test_corrupt_selector_state_does_not_break_generic_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "notifications" / selector.CONFIG
+            state.parent.mkdir()
+            state.parent.chmod(0o700)
+            state.write_text('{"version":1,"secret":"PRIVATE_SELECTOR_STATE"}')
+            state.chmod(0o600)
+            original = state.read_text()
+            with patch.dict(os.environ, {"TELEGRAM_ALERTS_HOME": directory}, clear=True), \
+                    patch.object(app.sys, "argv", ["telegram-alerts", "status"]), \
+                    patch.object(app.sys, "stdout", io.StringIO()) as output, \
+                    patch.object(app, "api", side_effect=AssertionError("status must not send")), \
+                    patch.object(selector, "_request", side_effect=AssertionError("status must not infer")):
+                self.assertEqual(app.cli(), 0)
+            self.assertIn("Routine updates: fail-closed (clef_configuration_invalid)", output.getvalue())
+            self.assertIn("no native session or lifecycle hook is read", output.getvalue())
+            self.assertNotIn("PRIVATE_SELECTOR_STATE", output.getvalue())
+            self.assertEqual(state.read_text(), original)
 
 
 if __name__ == "__main__":

@@ -157,7 +157,9 @@ class SelectorTests(unittest.TestCase):
                 self.configure(endpoint=endpoint)
         with patch.object(selector, '_key_file', wraps=selector._key_file) as key_check:
             self.configure()
-            key_check.assert_called_once_with(str(self.key))
+            self.assertEqual(key_check.call_count, 2)
+            self.assertEqual(key_check.call_args_list[0].args, (str(self.key),))
+            self.assertEqual(key_check.call_args_list[1].args, (str(self.key), True))
         self.key.chmod(0o644)
         with self.assertRaises(ValueError):
             self.configure()

@@ -143,7 +143,7 @@ class ReadabilityTests(unittest.TestCase):
             payload = send.call_args.args[2]
             self.assertTrue(payload["text"].startswith("Telegram Alerts test (illustrative"))
             self.assertNotIn("prompt_available", payload)
-            self.assertEqual(bold_fragments(payload), ["Agent needs you", "Needs you:", "Context:"])
+            self.assertEqual(bold_fragments(payload), ["Update"])
             self.assertFalse(legacy.receipt_path().exists())
 
 

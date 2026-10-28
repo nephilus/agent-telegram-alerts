@@ -263,9 +263,9 @@ def _record_inbox_warning(report, mapping):
         warnings.append(warning)
 
 
-def read_request(stream):
+def read_request(stream, *, kind="Attention"):
     if stream.isatty():
-        raise AttentionError("Attention expects a JSON object on standard input; see --help.")
+        raise AttentionError(f"{kind} expects a JSON object on standard input; see --help.")
     raw = getattr(stream, "buffer", stream).read(MAX_INPUT_BYTES + 1)
     try:
         if isinstance(raw, str):
@@ -275,25 +275,78 @@ def read_request(stream):
         return json.loads(raw.decode("utf-8"), object_pairs_hook=policy._pairs,
                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
     except (ValueError, UnicodeError, RecursionError):
-        raise AttentionError("Attention input must be one UTF-8 JSON object of at most 8192 bytes, without duplicate keys.") from None
+        raise AttentionError(f"{kind} input must be one UTF-8 JSON object of at most 8192 bytes, without duplicate keys.") from None
 
 
-def _text(value, title, limit, secrets, *, optional=False):
+def _text(value, title, limit, secrets, *, optional=False, kind="Attention"):
     if not isinstance(value, str) or len(value) > limit:
-        raise AttentionError(f"Attention {title} must be text of at most {limit} characters.")
+        raise AttentionError(f"{kind} {title} must be text of at most {limit} characters.")
     if any(re.search(r"(?:https?|wss?)://", text, flags=re.I)
            for text in (value, formatting.normalize_text(value))):
-        raise AttentionError("Put attention URLs in links, not text fields.")
+        raise AttentionError(f"Put {kind.lower()} URLs in links, not text fields.")
     cleaned = formatting.sanitize(value, secrets)
     if "[link]" in cleaned:
-        raise AttentionError("Put attention URLs in links, not text fields.")
+        raise AttentionError(f"Put {kind.lower()} URLs in links, not text fields.")
     if not cleaned and not optional:
-        raise AttentionError(f"Attention {title} cannot be empty after redaction.")
+        raise AttentionError(f"{kind} {title} cannot be empty after redaction.")
     return cleaned
+
+
+def _links(supplied, secrets, *, inbox_mapping=None, rewrite_report=None,
+           kind="Attention", host=None, review_port=None):
+    if not isinstance(supplied, list) or len(supplied) > 3:
+        raise AttentionError(f"{kind} links must be a list of at most three label/url objects.")
+    links, matched_review = [], False
+    for link in supplied:
+        if not isinstance(link, dict) or set(link) != {"label", "url"}:
+            raise AttentionError(f"Each {kind.lower()} link requires only label and url.")
+        label = _text(link["label"], "link label", 80, secrets, kind=kind)
+        if len(label.splitlines()) != 1 or "[redacted]" in label:
+            raise AttentionError(f"{kind} link labels must be single-line, non-sensitive text.")
+        mapped = None
+        source_prefix = None
+        unmapped = False
+        if inbox_mapping is not None:
+            mapped, source_prefix, unmapped = _rewrite_inbox_url(link["url"], inbox_mapping, secrets)
+        if unmapped:
+            _record_inbox_warning(rewrite_report, inbox_mapping)
+            continue
+        review = _review_url(link["url"], host, review_port, secrets) if host else None
+        matched_review = matched_review or review is not None
+        direct_inbox = (link["url"] if inbox_mapping and inbox_mapping.get("base")
+                        and _valid_inbox_target(link["url"], inbox_mapping, secrets) else None)
+        target = review or mapped or direct_inbox or safe_url(link["url"], secrets)
+        if target is None:
+            raise AttentionError(f"{kind} link rejected: use a safe public-DNS HTTPS URL or a safe URL on the trusted Inbox origin. No message sent.")
+        if mapped is not None:
+            _record_inbox_rewrite(rewrite_report, source_prefix, inbox_mapping["base"])
+        links.append({"label": label, "url": target})
+    if review_port is not None and not matched_review:
+        raise AttentionError(f"{kind} requires a matching root HTTPS review link for the declared port. No message sent.")
+    return links
+
+
+def _neutral_message(summary, project, links, *, kind):
+    # Show the destination host even when a caller supplies a friendly label.
+    links = [{"label": link["label"] + " · " + urlsplit(link["url"]).netloc,
+              "url": link["url"]} for link in links]
+    text = "🔔 "
+    entities = [{"type": "bold", "offset": formatting.utf16_length(text),
+                 "length": formatting.utf16_length("Update")}]
+    text += "Update\n\n" + summary
+    if project:
+        text += "\n\n📁 " + project
+    footer = formatting.prepend_message(formatting.link_footer(links, "expanded"), text)
+    message = {"text": footer["text"], "entities": entities + footer["entities"],
+               "link_preview_options": {"is_disabled": True}, "disable_notification": False}
+    if formatting.utf16_length(message["text"]) > 3500:
+        raise AttentionError(f"{kind} message is too long; shorten its fields. No message sent.")
+    return message
 
 
 def render(request, environment, home, secrets=(), *, review_port=None,
            inbox_mapping=None, rewrite_report=None):
+    """Render the compatibility attention schema through the neutral template."""
     secrets = tuple(secrets)
     host = None
     if review_port is not None:
@@ -308,63 +361,49 @@ def render(request, environment, home, secrets=(), *, review_port=None,
     context = _text(request["context"], "context", 400, secrets)
     needed = _text(request["needs_you"], "needs_you", 800, secrets)
     recommendation = _text(request.get("recommendation", ""), "recommendation", 600, secrets, optional=True)
-    supplied = request.get("links", [])
-    if not isinstance(supplied, list) or len(supplied) > 3:
-        raise AttentionError("Attention links must be a list of at most three label/url objects.")
-    links = []
-    matched_review = False
-    for link in supplied:
-        if not isinstance(link, dict) or set(link) != {"label", "url"}:
-            raise AttentionError("Each attention link requires only label and url.")
-        label = _text(link["label"], "link label", 80, secrets)
-        if len(label.splitlines()) != 1 or "[redacted]" in label:
-            raise AttentionError("Attention link labels must be single-line, non-sensitive text.")
-        mapped = None
-        source_prefix = None
-        unmapped = False
-        if inbox_mapping is not None:
-            mapped, source_prefix, unmapped = _rewrite_inbox_url(link["url"], inbox_mapping, secrets)
-        if unmapped:
-            _record_inbox_warning(rewrite_report, inbox_mapping)
-            continue
-        review = _review_url(link['url'], host, review_port, secrets) if host else None
-        matched_review = matched_review or review is not None
-        direct_inbox = (link["url"] if inbox_mapping and inbox_mapping.get("base")
-                        and _valid_inbox_target(link["url"], inbox_mapping, secrets) else None)
-        target = review or mapped or direct_inbox or safe_url(link["url"], secrets)
-        if target is None:
-            raise AttentionError("Attention link rejected: use a safe public-DNS HTTPS URL or a safe URL on the trusted Inbox origin. No message sent.")
-        if mapped is not None:
-            _record_inbox_rewrite(rewrite_report, source_prefix, inbox_mapping["base"])
-        # Show the destination host even when the agent supplies a friendly label.
-        links.append({"label": label + " · " + urlsplit(target).netloc, "url": target})
-    if review_port is not None and not matched_review:
-        raise AttentionError("Attention requires a matching root HTTPS review link for the declared port. No message sent.")
-    text, entities = "🔔 ", []
+    links = _links(request.get("links", []), secrets, inbox_mapping=inbox_mapping,
+                   rewrite_report=rewrite_report, host=host, review_port=review_port)
+    summary = "\n\n".join(value for value in (context, needed, recommendation) if value)
+    # Do not infer semantics from the wording, append invocation CWD, or force action labels.
+    return _neutral_message(summary, None, links, kind="Attention")
 
-    def append(value, *, bold=False):
-        nonlocal text
-        if bold:
-            entities.append({"type": "bold", "offset": formatting.utf16_length(text),
-                             "length": formatting.utf16_length(value)})
-        text += value
 
-    append("Agent needs you", bold=True)
-    # Explicit attention is agent-agnostic; never fetch or display a Jcode session name.
-    append("\n📁 " + formatting.folder_label({"TELEGRAM_ALERTS_CWD": environment.get("TELEGRAM_ALERTS_CWD")}, secrets=secrets))
-    for icon, title, value in (("👉", "Needs you", needed), ("🧭", "Context", context),
-                                ("✅", "Recommended", recommendation)):
-        if value:
-            append("\n\n" + icon + " ")
-            append(title + ":", bold=True)
-            append("\n" + value)
-    footer = formatting.prepend_message(formatting.link_footer(links, "expanded"), text)
-    message = {"text": footer["text"], "entities": entities + footer["entities"],
-               "link_preview_options": {"is_disabled": True}, "disable_notification": False}
-    # Attention never silently clips a required action, choice or link.
-    if formatting.utf16_length(message["text"]) > 3500:
-        raise AttentionError("Attention message is too long; shorten its fields. No message sent.")
-    return message
+def _update_fields(request, secrets):
+    allowed = {"summary", "context", "project", "links"}
+    if not isinstance(request, dict) or "summary" not in request or request.keys() - allowed:
+        raise AttentionError("Update requires summary; only context, project, and links are optional.")
+    summary = _text(request["summary"], "summary", 400, secrets, kind="Update")
+    context = _text(request.get("context", ""), "context", 3000, secrets,
+                    optional=True, kind="Update")
+    project = _text(request["project"], "project", 120, secrets, kind="Update") if "project" in request else None
+    if project is not None and len(project.splitlines()) != 1:
+        raise AttentionError("Update project must be single-line text.")
+    return summary, context, project
+
+
+def prepare_update(request, environment, home, secrets=(), *, inbox_mapping=None,
+                   rewrite_report=None):
+    """Validate and sanitize an update before it is exposed to the selector."""
+    secrets = tuple(secrets)
+    summary, context, project = _update_fields(request, secrets)
+    links = _links(request.get("links", []), secrets, inbox_mapping=inbox_mapping,
+                   rewrite_report=rewrite_report, kind="Update")
+    # Keep the gate-only context in memory for selection, never in a delivery rendering.
+    return {"summary": summary, "context": context, "project": project,
+            "links": links}
+
+
+def render_update(request, environment, home, secrets=(), *, review_port=None,
+                  inbox_mapping=None, rewrite_report=None):
+    """Render only the sender's summary, explicit project, and validated links."""
+    if review_port is not None:
+        raise AttentionError("Update does not accept a review-port override. No message sent.")
+    clean = prepare_update(request, environment, home, secrets,
+                           inbox_mapping=inbox_mapping, rewrite_report=rewrite_report)
+    links = _links(clean["links"], secrets, inbox_mapping=inbox_mapping,
+                   rewrite_report=rewrite_report, kind="Update")
+    # `context` was validated above but is intentionally absent from this call.
+    return _neutral_message(clean["summary"], clean["project"], links, kind="Update")
 
 
 def _state(value):
@@ -416,7 +455,8 @@ def publish(home, environment, request, key, deliver, destination_fingerprint, *
             review_port=None, legacy_home=None):
     _publish_options(key, destination_fingerprint, resend)
     options = {'secrets': secrets, 'resend': resend, 'review_port': review_port,
-               'legacy_home': legacy_home}
+               'legacy_home': legacy_home, 'renderer': render, 'check_session_filters': True,
+               'kind': 'Attention'}
     if review_port is None:
         return _publish(home, environment, request, key, deliver, destination_fingerprint, **options)
     # Reject malformed input or absent/unsafe trust before any lock-file
@@ -439,16 +479,26 @@ def publish(home, environment, request, key, deliver, destination_fingerprint, *
         raise AttentionError(REVIEW_ERROR) from None
 
 
+def publish_update(home, environment, request, key, deliver, destination_fingerprint, *, secrets=()):
+    """Send a routine update only after its caller's explicit Clef decision."""
+    _publish_options(key, destination_fingerprint, False)
+    return _publish(home, environment, request, key, deliver, destination_fingerprint,
+                    secrets=secrets, renderer=render_update, check_session_filters=False,
+                    kind="Update")
+
+
 def _publish(home, environment, request, key, deliver, destination_fingerprint, *, secrets=(), resend=False,
-             review_port=None, legacy_home=None):
+             review_port=None, legacy_home=None, renderer=render, check_session_filters=True,
+             kind="Attention"):
     session = environment.get("JCODE_SESSION_ID")
     mapping = _inbox_mapping(environment, request)
-    message = render(request, environment, home, secrets, review_port=review_port,
-                     inbox_mapping=mapping)
+    message = renderer(request, environment, home, secrets, review_port=review_port,
+                       inbox_mapping=mapping)
     try:
-        config = _load_policy(home, legacy_home)
-        if session in config["exclude_sessions"] or (config["include_sessions"] and session not in config["include_sessions"]):
-            raise AttentionError("Attention disabled by the configured session filters. No message sent.")
+        if check_session_filters:
+            config = _load_policy(home, legacy_home)
+            if session in config["exclude_sessions"] or (config["include_sessions"] and session not in config["include_sessions"]):
+                raise AttentionError(f"{kind} disabled by the configured session filters. No message sent.")
         fingerprint = policy._hash(destination_fingerprint + "\0" + key)
         now = int(time.time())
         with policy._directory(home, create=True) as folder, policy._locked(folder, ".telegram-attention.lock"):
@@ -465,17 +515,17 @@ def _publish(home, environment, request, key, deliver, destination_fingerprint, 
             # Re-read the read-only registry immediately before rendering the
             # message sent under this lock. Only the outgoing copy is rewritten.
             report = {"url_rewrites": [], "url_rewrite_warnings": []}
-            message = render(request, environment, home, secrets, review_port=review_port,
-                             inbox_mapping=_inbox_mapping(environment, request), rewrite_report=report)
+            message = renderer(request, environment, home, secrets, review_port=review_port,
+                               inbox_mapping=_inbox_mapping(environment, request), rewrite_report=report)
             response = deliver("sendMessage", message)
             if (not isinstance(response, dict) or not policy._message_id(response.get("message_id"))
                     or not formatting.formatting_confirmed(message, response)):
-                raise AttentionError("Attention delivery was not confirmed. It may have arrived; do not retry automatically.")
+                raise AttentionError(f"{kind} delivery was not confirmed. It may have arrived; do not retry automatically.")
             state["requests"][fingerprint] = {"at": now, "message_id": response["message_id"]}
             try:
                 policy._write(folder, STATE_FILE, state, MAX_STATE_BYTES)
             except (OSError, ValueError):
-                raise AttentionError("Telegram accepted the attention message, but local confirmation could not be saved. Do not retry automatically.") from None
+                raise AttentionError(f"Telegram accepted the {kind.lower()} message, but local confirmation could not be saved. Do not retry automatically.") from None
             receipt = {"state": "sent", "telegram_message_id": response["message_id"],
                        "response_confirmed": True, "formatting_confirmed": True}
             if report["url_rewrites"]:

@@ -54,7 +54,8 @@ class GenericCoreIsolationTests(unittest.TestCase):
             self.assertEqual(len(sent), 1)
             text = sent[0][1]["text"]
             self.assertIn("Telegram Alerts test (illustrative", text)
-            self.assertIn("Agent needs you", text)
+            self.assertIn("🔔 Update", text)
+            self.assertNotIn("Agent needs you", text)
             self.assertNotIn("Jcode turn", text)
             self.assertNotIn("PRIVATE_SYNTHETIC_FAILURE", text)
             self.assertNotIn("session_absent_native_state", text)
