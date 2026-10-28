@@ -325,8 +325,10 @@ def main(argv=None):
             alert_policy.save_policy(home, {"completion_selector": "off", "events": {"completion": False}})
         result = alert_selector.status(home)
         policy = delivery_policy(home)
-        print(json.dumps({**result, "enabled": result.get("configured") is True and policy["completion_selector"] == "clef" and policy["events"]["completion"],
-                          "mode": policy["completion_selector"],
+        route_ready = result.get("legacy_route_ready") is True
+        print(json.dumps({**result, "enabled": result.get("configured") is True and route_ready
+                          and policy["completion_selector"] == "clef" and policy["events"]["completion"],
+                          "mode": policy["completion_selector"], "route_ready": route_ready,
                           "completion_enabled": policy["events"]["completion"]}, sort_keys=True))
         return
     if args.command == "verbosity":
@@ -355,8 +357,10 @@ def main(argv=None):
         level = selected_verbosity()
         print(f"Legacy event verbosity: {level} (up to {formatting.PROFILES[level]['words']} words)")
         policy = delivery_policy(config_path().parent)
+        selector_status = alert_selector.status(config_path().parent)
         print(f"Legacy delivery policy: {policy['preset']}, completion interval {policy['cooldown_seconds']}s per session")
         print("Completion selector: " + policy["completion_selector"])
+        print("Completion selector route: " + ("ready" if selector_status.get("legacy_route_ready") else "not ready"))
         print("Status card: " + ("on" if policy["status_card"] else "off"))
         try:
             receipt = json.loads(receipt_path().read_text())
@@ -371,6 +375,9 @@ def cli():
     try:
         main()
         return 0
+    except alert_selector.RouteOwnershipError as error:
+        print(str(error), file=sys.stderr)
+        return 1
     except (core.SetupError, OSError, ValueError, TypeError, RecursionError) as error:
         print(str(error) if isinstance(error, core.SetupError) else "Legacy Jcode adapter state could not be used safely.", file=sys.stderr)
         return 1

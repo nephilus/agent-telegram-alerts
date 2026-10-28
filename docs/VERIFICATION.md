@@ -9,6 +9,7 @@
 | Install wheel in a fresh environment and invoke public commands | Real packaged imports, entrypoints, version, no-send previews, and hook registration/removal | Delivery to a real bot |
 | Hosted CI on Linux/macOS and supported Python versions | Generic CLI/source/packaging and opt-in adapter workflows work on runner environments | Compatibility of the optional legacy event adapter with every Jcode release |
 | Offline generic `telegram-alerts update` tests with a deterministic injected prompt fixture | YES forwards the original sanitized summary/project/validated links; NO, unavailable key/prompt, busy state and malformed decisions fail closed; context is never sent to Telegram or retained | Accuracy of an owner-vetted production prompt or real Clef/Telegram availability |
+| Optional isolated wheel/sdist prompt fixture smoke (`test_prompt_package_install.py`) | Explicit ID/pin activation resolves from an unrelated CWD with imports from the installed venv; synthetic NO performs no Telegram send | Production prompt approval, installation or live inference/send |
 | Real generic `telegram-alerts attention` call with `JCODE_SESSION_ID` unset | Installed CLI accepts the request and Telegram returns the exact neutral-template/link formatting receipt | Phone notification visibility, user reading, or correctness of the assistant's task claims |
 
 ## Repeat the local package workflow

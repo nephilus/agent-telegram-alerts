@@ -68,18 +68,101 @@ def _require(condition):
         raise ValueError('Invalid selector data')
 
 
-def _read_prompt_json(path, limit=32768):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+class RouteOwnershipError(ValueError):
+    """A route-specific selector configuration cannot replace another route."""
+
+
+def _check_resource_owner(info, *, directory):
+    _require((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+             and info.st_uid in (0, os.getuid()) and not (info.st_mode & 0o022))
+    return info
+
+
+def _open_resource_anchor(path):
+    """Open a selected installation anchor; resolve only this trusted prefix alias."""
+    path = Path(path)
     try:
-        with os.fdopen(fd, 'rb') as stream:
-            info = os.fstat(stream.fileno())
-            _require(stat.S_ISREG(info.st_mode) and 0 <= info.st_size <= limit)
-            raw = stream.read(limit + 1)
-    except OSError:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError:
+        if os.path.lexists(path):
+            raise ValueError('Unsafe prompt installation anchor') from None
+        return None
+    fd = os.open(resolved, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        _check_resource_owner(os.fstat(fd), directory=True)
+    except BaseException:
+        os.close(fd)
         raise
+    return fd
+
+
+def _open_resource_root(anchor, components):
+    """Walk resource directories from a trusted FD without following tree links."""
+    fd = _open_resource_anchor(anchor)
+    if fd is None:
+        return None
+    try:
+        for index, name in enumerate(components):
+            _require(isinstance(name, str) and name not in ('', '.', '..') and '/' not in name)
+            try:
+                before = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                if index == 0:
+                    os.close(fd)
+                    return None
+                raise ValueError('Incomplete prompt resource tree') from None
+            _check_resource_owner(before, directory=True)
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            try:
+                after = os.fstat(child)
+                _check_resource_owner(after, directory=True)
+                _require((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino))
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _open_resource_file(root, name, limit):
+    try:
+        before = os.stat(name, dir_fd=root, follow_symlinks=False)
+    except FileNotFoundError:
+        raise
+    _check_resource_owner(before, directory=False)
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+    try:
+        after = os.fstat(fd)
+        _check_resource_owner(after, directory=False)
+        _require((before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+                 and 0 <= after.st_size <= limit)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _read_prompt_bytes(root, name, limit):
+    fd = _open_resource_file(root, name, limit)
+    with os.fdopen(fd, 'rb') as stream:
+        raw = stream.read(limit + 1)
     _require(len(raw) <= limit)
+    return raw
+
+
+def _parse_prompt_json(raw):
+    def finite_float(value):
+        parsed = float(value)
+        _require(math.isfinite(parsed))
+        return parsed
+
     return json.loads(raw.decode('utf-8'), object_pairs_hook=policy._pairs,
-                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Invalid number')),
+                      parse_float=finite_float)
 
 
 def _prompt_dirs(resource_dirs=None):
@@ -90,6 +173,22 @@ def _prompt_dirs(resource_dirs=None):
     return (source, installed) if source != installed else (source,)
 
 
+def _prompt_locations(resource_dirs=None):
+    """Return explicitly rooted paths; only the resource tree is no-follow walked."""
+    if resource_dirs is not None:
+        locations = []
+        for value in resource_dirs:
+            root = Path(value).absolute()
+            _require(root.name not in ('', '.', '..'))
+            locations.append((root.parent, (root.name,)))
+        return tuple(locations)
+    source_anchor = Path(__file__).parent
+    installed_anchor = Path(sysconfig.get_path('data'))
+    locations = [(source_anchor, ('prompts', 'clef')),
+                 (installed_anchor, ('share', 'telegram-alerts', 'prompts', 'clef'))]
+    return tuple(locations[:1] if locations[0] == locations[1] else locations)
+
+
 def _validate_question(question):
     _require(isinstance(question, dict) and set(question) == {'type', 'instructions', 'criteria'}
              and question['type'] == 'choice'
@@ -98,34 +197,49 @@ def _validate_question(question):
              and all(isinstance(question['criteria'][key], str)
                      and 1 <= len(question['criteria'][key]) <= 2000
                      for key in ('yes', 'no')))
+    for text in (question['instructions'], question['criteria']['yes'], question['criteria']['no']):
+        text.encode('utf-8')
     return question
 
 
 def load_prompt_resource(resource_id, *, resource_dirs=None):
-    """Load one allowlisted, versioned prompt; resources are shipped only after owner vet."""
+    """Load an allowlisted resource only when its exact installed bytes match the trusted pin."""
     if resource_id == LEGACY_PROMPT_ID:
         value = {'version': 1, 'id': LEGACY_PROMPT_ID, 'question': QUESTION}
         return {**value, 'sha256': _hash(_json(QUESTION).decode('utf-8'))}
     _require(isinstance(resource_id, str) and PROMPT_ID.fullmatch(resource_id))
-    for root in _prompt_dirs(resource_dirs):
-        manifest_path = root / 'manifest.json'
-        if not manifest_path.exists():
+    for anchor, components in _prompt_locations(resource_dirs):
+        root = _open_resource_root(anchor, components)
+        if root is None:
             continue
-        manifest = _read_prompt_json(manifest_path, 8192)
-        _require(isinstance(manifest, dict) and set(manifest) == {'version', 'resources'}
-                 and type(manifest['version']) is int and manifest['version'] == 1
-                 and isinstance(manifest['resources'], list) and len(manifest['resources']) <= 100
-                 and all(isinstance(item, str) and PROMPT_ID.fullmatch(item)
-                         for item in manifest['resources'])
-                 and len(set(manifest['resources'])) == len(manifest['resources']))
-        if resource_id not in manifest['resources']:
-            return None
-        value = _read_prompt_json(root / (resource_id + '.json'))
-        _require(isinstance(value, dict) and set(value) == {'version', 'id', 'question'}
-                 and type(value['version']) is int and value['version'] == 1
-                 and value['id'] == resource_id)
-        _validate_question(value['question'])
-        return {**value, 'sha256': _prompt_hash(value['question'])}
+        try:
+            try:
+                manifest = _parse_prompt_json(_read_prompt_bytes(root, 'manifest.json', 8192))
+            except FileNotFoundError:
+                raise ValueError('Invalid prompt manifest') from None
+            _require(isinstance(manifest, dict) and set(manifest) == {'version', 'resources'}
+                     and type(manifest['version']) is int and manifest['version'] == 2
+                     and isinstance(manifest['resources'], list) and len(manifest['resources']) <= 100)
+            bindings = {}
+            for item in manifest['resources']:
+                _require(isinstance(item, dict) and set(item) == {'id', 'sha256'}
+                         and isinstance(item['id'], str) and PROMPT_ID.fullmatch(item['id'])
+                         and item['id'] != LEGACY_PROMPT_ID
+                         and isinstance(item['sha256'], str) and HEX.fullmatch(item['sha256'])
+                         and item['id'] not in bindings)
+                bindings[item['id']] = item['sha256']
+            if resource_id not in bindings:
+                return None
+            try:
+                raw = _read_prompt_bytes(root, resource_id + '.json', 32768)
+            except FileNotFoundError:
+                raise ValueError('Missing prompt artifact') from None
+            digest = hashlib.sha256(raw).hexdigest()
+            _require(digest == bindings[resource_id])
+            question = _validate_question(_parse_prompt_json(raw))
+            return {'version': 2, 'id': resource_id, 'question': question, 'sha256': digest}
+        finally:
+            os.close(root)
     return None
 
 
@@ -253,6 +367,12 @@ def configure(home, *, endpoint, key_file, model, expected_model, pir_turns=100,
         old = _read_config(folder)
         if old is not None:
             _config(old)
+            old_route = 'legacy' if old['prompt_resource'] == LEGACY_PROMPT_ID else 'generic'
+            new_route = 'legacy' if value['prompt_resource'] == LEGACY_PROMPT_ID else 'generic'
+            if old_route != new_route:
+                raise RouteOwnershipError(
+                    f"Clef selector belongs to the {old_route} route in this home; use distinct "
+                    "TELEGRAM_ALERTS_HOME/JCODE_HOME paths. No migration was performed.")
         state = _read_state(folder)
         _require(len(state['records']) <= pir_turns)
         if old is not None:
@@ -270,7 +390,8 @@ def status(home):
             return {'enabled': False, 'configured': False, 'count': len(state['records']), 'limit': 100,
                     'ready': False, 'prompt_id': None, 'prompt_hash': None,
                     'prompt_available': False, 'key_available': False,
-                    'update_route_ready': False, 'totals': state['totals']}
+                    'update_route_ready': False, 'legacy_route_ready': False,
+                    'totals': state['totals']}
         config = _config(config)
         count = len(state['records'])
         prompt_id = config['prompt_resource']
@@ -284,11 +405,15 @@ def status(home):
             del private_key
         except Exception:
             key_available = False
-        return {'enabled': True, 'configured': True, 'generation': config['generation'],
-                'model': config['model'], 'expected_model': config['expected_model'],
+        update_route_ready = (resource is not None and prompt_id not in (None, LEGACY_PROMPT_ID)
+                              and key_available)
+        legacy_route_ready = (resource is not None and prompt_id == LEGACY_PROMPT_ID and key_available)
+        return {'enabled': update_route_ready or legacy_route_ready, 'configured': True,
+                'generation': config['generation'], 'model': config['model'],
+                'expected_model': config['expected_model'],
                 'prompt_id': prompt_id, 'prompt_hash': None if resource is None else resource['sha256'],
                 'prompt_available': resource is not None, 'key_available': key_available,
-                'update_route_ready': resource is not None and prompt_id != LEGACY_PROMPT_ID and key_available,
+                'update_route_ready': update_route_ready, 'legacy_route_ready': legacy_route_ready,
                 'count': count, 'limit': config['pir_turns'], 'ready': count == config['pir_turns']
                 and all(r['outcome'] != 'pending' for r in state['records']), 'totals': state['totals']}
 
@@ -421,11 +546,16 @@ def process(home, turn, deliver, *, secrets=(), request=None, retain_input=True,
                 return receipt
             config = _config(config)
             prompt_id = config['prompt_resource']
+            route_matches = (prompt_id not in (None, LEGACY_PROMPT_ID) if require_versioned_prompt
+                             else prompt_id == LEGACY_PROMPT_ID)
+            if not route_matches:
+                receipt['selector_reason'] = 'prompt_unavailable'
+                return receipt
             try:
-                resource = load_prompt_resource(prompt_id) if prompt_id is not None else None
+                resource = load_prompt_resource(prompt_id)
             except Exception:
                 resource = None
-            if (resource is None or (require_versioned_prompt and prompt_id == LEGACY_PROMPT_ID)):
+            if resource is None:
                 receipt['selector_reason'] = 'prompt_unavailable'
                 return receipt
             prompt = resource['question']

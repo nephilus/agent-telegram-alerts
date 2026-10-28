@@ -260,6 +260,7 @@ def _clef_status():
         reason = "clef_key_unavailable"
     else:
         reason = None
+    result["enabled"] = result.get("update_route_ready") is True
     result["routes"] = {
         "update": "clef_gated" if reason is None else "fail_closed",
         "update_reason": reason,
@@ -483,6 +484,8 @@ def main():
                     model=args.model, expected_model=args.expected_model,
                     prompt_resource=args.prompt_resource)
                 result = _clef_status()
+        except alert_selector.RouteOwnershipError as error:
+            raise SetupError(str(error)) from None
         except (OSError, ValueError, TypeError, RecursionError):
             raise SetupError("Clef configuration could not be read or updated safely.") from None
         print(json.dumps(result, sort_keys=True))
