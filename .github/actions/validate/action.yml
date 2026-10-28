@@ -29,7 +29,7 @@ runs:
         "$smoke_dir/venv/bin/telegram-alerts" --version
         "$smoke_dir/venv/bin/telegram-alerts" attention --help
         "$smoke_dir/venv/bin/jcode-telegram" --version
-        "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/telegram-alerts"; skill = root / "skills/telegram/SKILL.md"; owner_skill = root / "skills/owner-review/SKILL.md"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "telegram-alerts attention" in skill.read_text(); assert "name: owner-review" in owner_skill.read_text(); reference = owner_skill.parent / "references/inbox.md"; assert "[references/inbox.md](references/inbox.md)" in owner_skill.read_text(); assert "Check permission before discovery" in reference.read_text()'
+        "$smoke_dir/venv/bin/python" -c 'from pathlib import Path; import sys; root = Path(sys.prefix) / "share/telegram-alerts"; skill = root / "skills/telegram/SKILL.md"; owner_skill = root / "skills/owner-review/SKILL.md"; assert (root / "prompts/owner-workflow.md").read_text().startswith("Make it right"); assert "telegram-alerts attention" in skill.read_text(); assert "name: owner-review" in owner_skill.read_text(); reference = owner_skill.parent / "references/inbox.md"; assert "[references/inbox.md](references/inbox.md)" in owner_skill.read_text(); assert "Initialization/tool listing can start Inbox" in reference.read_text(); assert "Never test or connect an OFF service to check it" in reference.read_text()'
         "$smoke_dir/venv/bin/telegram-alerts" review-host
         test ! -e "$TELEGRAM_ALERTS_HOME/notifications/telegram-review-policy.json"
         "$smoke_dir/venv/bin/telegram-alerts" review-host device.tailnet.ts.net
