@@ -72,14 +72,82 @@ class InboxRewriteTests(unittest.TestCase):
         self.assertTrue(receipt["response_confirmed"])
         self.assertTrue(receipt["formatting_confirmed"])
 
+    def test_registered_tailnet_link_is_accepted_byte_for_byte_and_matches_rewrite(self):
+        self.registry_data()
+        local = "http://localhost:44529/inbox/review%2Fsub?mode=compact%2Ffull#thread=alpha"
+        direct = "https://device.tailnet.ts.net:44529/inbox/review%2Fsub?mode=compact%2Ffull#thread=alpha"
+        mapping = attention._inbox_mapping(self.environment, {
+            "links": [{"url": local}, {"url": direct}],
+        })
+        rewritten, _, missing = attention._rewrite_inbox_url(local, mapping)
+        self.assertFalse(missing)
+        self.assertEqual(rewritten, direct)
+
+        self.request["links"][0]["url"] = direct
+        receipt = self.publish()
+        self.assertEqual(receipt["state"], "sent")
+        self.assertEqual(self.link_urls(self.deliveries[0][1]), [direct])
+        self.assertEqual(self.request["links"][0]["url"], direct)
+        self.assertNotIn("url_rewrites", receipt)
+        self.assertNotIn("thread=alpha", json.dumps(receipt))
+
+    def test_direct_tailnet_trust_is_limited_to_exact_registered_origin_and_safe_target(self):
+        self.registry_data()
+        for url in (
+            "https://attacker.example.net:44529/#thread=alpha",
+            "https://device.tailnet.ts.net:44528/#thread=alpha",
+            "https://user:password@device.tailnet.ts.net:44529/#thread=alpha",
+        ):
+            with self.subTest(url=url), self.assertRaises(attention.AttentionError):
+                self.request["links"][0]["url"] = url
+                self.publish()
+        self.assertEqual(self.deliveries, [])
+
+    def test_direct_tailnet_url_fails_closed_without_a_valid_registry(self):
+        direct = "https://device.tailnet.ts.net:44529/#thread=alpha"
+        for registry_state in ("absent", "malformed"):
+            with self.subTest(registry_state=registry_state):
+                if registry_state == "malformed":
+                    self.registry.write_text("{not-json")
+                    self.registry.chmod(0o600)
+                self.request["links"][0]["url"] = direct
+                with self.assertRaises(attention.AttentionError):
+                    self.publish()
+                self.assertEqual(self.deliveries, [])
+                if registry_state == "malformed":
+                    self.registry.unlink()
+
+    def test_direct_tailnet_link_rejects_unsafe_fragments(self):
+        self.registry_data()
+        for fragment in ("token=private-value", "thread=123456:abcdefghijk",
+                         "access_token%3Dprivate-value"):
+            url = "https://device.tailnet.ts.net:44529/#" + fragment
+            with self.subTest(fragment=fragment), self.assertRaises(attention.AttentionError):
+                self.request["links"][0]["url"] = url
+                self.publish()
+        self.assertEqual(self.deliveries, [])
+
+    def test_direct_tailnet_link_honors_the_existing_explicit_base_override(self):
+        self.registry_data(tailscale_url="https://registry.tailnet.ts.net:44529/")
+        self.environment[attention.INBOX_BASE_ENV] = "https://override.tailnet.example.net:44529/"
+        direct = "https://override.tailnet.example.net:44529/#thread=alpha"
+        self.request["links"][0]["url"] = direct
+        receipt = self.publish()
+        self.assertEqual(receipt["state"], "sent")
+        self.assertEqual(self.link_urls(self.deliveries[0][1]), [direct])
+        self.assertNotIn("url_rewrites", receipt)
+
     def test_default_registry_is_under_the_plannotator_inbox_home(self):
-        request = {"links": [{"url": "http://localhost:44529/"}]}
         base = "https://device.tailnet.ts.net:44529/"
-        with patch.object(Path, "home", return_value=self.root), \
-                patch.object(attention, "_read_inbox_registry", return_value=(44529, base)) as read:
-            mapping = attention._inbox_mapping({}, request)
-        self.assertEqual(mapping["base"], "https://device.tailnet.ts.net:44529")
-        read.assert_called_once_with(str(self.root / ".plannotator" / "inbox" / "inbox.json"))
+        for url in ("http://localhost:44529/",
+                    "https://device.tailnet.ts.net:44529/#thread=alpha"):
+            with self.subTest(url=url):
+                request = {"links": [{"url": url}]}
+                with patch.object(Path, "home", return_value=self.root), \
+                        patch.object(attention, "_read_inbox_registry", return_value=(44529, base)) as read:
+                    mapping = attention._inbox_mapping({}, request)
+                self.assertEqual(mapping["base"], "https://device.tailnet.ts.net:44529")
+                read.assert_called_once_with(str(self.root / ".plannotator" / "inbox" / "inbox.json"))
 
     def test_both_exact_loopback_hosts_rewrite_but_other_ports_and_hosts_do_not(self):
         self.registry_data()

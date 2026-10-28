@@ -153,16 +153,17 @@ def _trusted_inbox_base(value, port):
     return "https://" + authority
 
 
-def _has_loopback_link(request):
+def _has_inbox_link(request):
     if not isinstance(request, dict) or not isinstance(request.get("links", []), list):
         return False
     return any(isinstance(link, dict) and isinstance(link.get("url"), str)
-               and link["url"].startswith(("http://localhost:", "http://127.0.0.1:"))
+               and (link["url"].startswith(("http://localhost:", "http://127.0.0.1:"))
+                    or link["url"].lower().startswith("https://"))
                for link in request.get("links", []))
 
 
 def _inbox_mapping(environment, request):
-    if not _has_loopback_link(request):
+    if not _has_inbox_link(request):
         return {"port": None, "base": None}
     registry = environment.get(INBOX_REGISTRY_ENV) if isinstance(environment, dict) else None
     if not isinstance(registry, str) or not registry:
@@ -328,9 +329,11 @@ def render(request, environment, home, secrets=(), *, review_port=None,
             continue
         review = _review_url(link['url'], host, review_port, secrets) if host else None
         matched_review = matched_review or review is not None
-        target = review or mapped or safe_url(link["url"], secrets)
+        direct_inbox = (link["url"] if inbox_mapping and inbox_mapping.get("base")
+                        and _valid_inbox_target(link["url"], inbox_mapping, secrets) else None)
+        target = review or mapped or direct_inbox or safe_url(link["url"], secrets)
         if target is None:
-            raise AttentionError("Attention link rejected: use a verified public-DNS HTTPS URL without credentials, query, fragment, escapes or a non-443 port. No message sent.")
+            raise AttentionError("Attention link rejected: use a safe public-DNS HTTPS URL or a safe URL on the trusted Inbox origin. No message sent.")
         if mapped is not None:
             _record_inbox_rewrite(rewrite_report, source_prefix, inbox_mapping["base"])
         # Show the destination host even when the agent supplies a friendly label.
